@@ -66,7 +66,7 @@ namespace download
 		}
 
 		auto last_update = std::chrono::high_resolution_clock::now();
-		int progress_callback(size_t total, size_t progress)
+		int progress_callback(size_t total, size_t progress, size_t unk)
 		{
 			const auto now = std::chrono::high_resolution_clock::now();
 			if (now - last_update > 20ms)
@@ -88,7 +88,7 @@ namespace download
 				}, scheduler::pipeline::lui);
 			}
 
-			//console::debug("Download progress: %lli/%lli\n", progress, total);
+			console::debug("Download progress: %lli/%lli\n", progress, total);
 			if (download_aborted())
 			{
 				return -1;
@@ -225,6 +225,125 @@ namespace download
 		}, scheduler::pipeline::async);
 	}
 
+	void start_download_tcp(const game::netadr_s& target, const nlohmann::json infoJson, const std::vector<file_t>& files)
+	{
+		if (download_active())
+		{
+			scheduler::schedule([=]
+				{
+					if (!download_active())
+					{
+						start_download_tcp(target, infoJson, files);
+						return scheduler::cond_end;
+					}
+
+					return scheduler::cond_continue;
+				}, scheduler::pipeline::main);
+
+			return;
+		}
+
+		globals.access([&](globals_t& globals_)
+			{
+				globals_ = {};
+			});
+
+		const std::string base = infoJson["sv_wwwBaseUrl"];
+		if (base.empty())
+		{
+			menu_error("Download failed: Server doesn't have 'sv_wwwBaseUrl' dvar set.");
+			return;
+		}
+
+		scheduler::once([]
+			{
+				ui_scripting::notify("mod_download_start", {});
+			}, scheduler::pipeline::lui);
+
+		scheduler::once([=]
+			{
+				{
+					const auto _0 = gsl::finally(&mark_unactive);
+					mark_active();
+
+					if (download_aborted())
+					{
+						return;
+					}
+
+					for (const auto& file : files)
+					{
+						scheduler::once([=]
+							{
+								const ui_scripting::table data_table{};
+								data_table.set("name", file.name.data());
+
+								ui_scripting::notify("mod_download_set_file",
+									{
+										{"request", data_table}
+									});
+							}, scheduler::pipeline::lui);
+
+						const auto url = utils::string::va("%s/%s", base.data(), file.name.data());
+						console::debug("Downloading %s from %s: %s\n", file.name.data(), base.data(), url);
+						auto data = utils::http::get_data(url, {}, {}, &progress_callback);
+						if (!data.has_value())
+						{
+							menu_error(utils::string::va("Download failed: An unknown error occurred when getting data from '%s', please try again.", url));
+							return;
+						}
+
+						if (download_aborted())
+						{
+							return;
+						}
+
+						auto& result = data.value();
+						if (result.code != CURLE_OK)
+						{
+							if (result.code == CURLE_COULDNT_CONNECT)
+							{
+								menu_error(utils::string::va("Download failed: Couldn't connect to server '%s' (%i)\n",
+									url, result.code));
+								return;
+							}
+
+							menu_error(utils::string::va("Download failed: %s (%i)\n",
+								curl_easy_strerror(result.code), result.code));
+							return;
+						}
+
+						if (result.response_code >= 400)
+						{
+							menu_error(utils::string::va("Download failed: Server returned bad response code (%i)\n",
+								result.response_code));
+							return;
+						}
+
+						const auto hash = utils::hash::get_buffer_hash(result.buffer, file.name);
+						if (hash != file.hash)
+						{
+							menu_error(utils::string::va("Download failed: File hash doesn't match the server's (%s: %s != %s)\n",
+								file.name.data(), hash.data(), file.hash.data()));
+							return;
+						}
+
+						utils::io::write_file(file.name, result.buffer, false);
+					}
+				}
+
+				scheduler::once([]
+					{
+						ui_scripting::notify("mod_download_done", {});
+					}, scheduler::pipeline::lui);
+
+				scheduler::once([target]
+					{
+						party::connect(target);
+					}, scheduler::pipeline::main);
+			}, scheduler::pipeline::async);
+	}
+
 	void stop_download()
 	{
 		if (!download_active())
@@ -254,4 +373,4 @@ namespace download
 	};
 }
 
-REGISTER_COMPONENT(download::component)
+//REGISTER_COMPONENT(download::component)

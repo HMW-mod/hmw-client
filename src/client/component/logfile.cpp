@@ -11,6 +11,8 @@
 #include <utils/hook.hpp>
 #include <utils/io.hpp>
 
+#include <voice/voice_chat_globals.hpp>
+
 namespace logfile
 {
 	bool hook_enabled = true;
@@ -21,7 +23,6 @@ namespace logfile
 		{
 			bool is_lua_hook{};
 			const char* target_pos{};
-			sol::protected_function lua_function;
 		};
 
 		std::unordered_map<const char*, gsc_hook_t> vm_execute_hooks;
@@ -32,9 +33,6 @@ namespace logfile
 
 		utils::hook::detour g_log_printf_hook;
 
-		std::vector<sol::protected_function> player_killed_callbacks;
-		std::vector<sol::protected_function> player_damage_callbacks;
-
 		std::vector<scripting::function> say_callbacks;
 
 		game::dvar_t* logfile;
@@ -44,35 +42,12 @@ namespace logfile
 		char empty_function[2] = {0x32, 0x34}; // CHECK_CLEAR_PARAMS, END
 		const char* target_function = nullptr;
 
-		sol::lua_value convert_entity(lua_State* state, const game::mp::gentity_s* ent)
-		{
-			if (!ent)
-			{
-				return {};
-			}
-
-			const scripting::entity player{game::Scr_GetEntityId(ent->s.number, 0)};
-			return scripting::lua::convert(state, player);
-		}
-
 		std::string get_weapon_name(unsigned int weapon, bool isAlternate)
 		{
 			char output[1024] = {0};
 			game::BG_GetWeaponNameComplete(weapon, isAlternate, output, 1024);
 			return output;
 		}
-
-		sol::lua_value convert_vector(lua_State* state, const float* vec)
-		{
-			if (!vec)
-			{
-				return {};
-			}
-
-			const auto vec_ = scripting::vector(vec);
-			return scripting::lua::convert(state, vec_);
-		}
-
 		std::string convert_mod(const int meansOfDeath)
 		{
 			const auto value = reinterpret_cast<game::scr_string_t**>(0x10B5290_b)[meansOfDeath];
@@ -80,85 +55,42 @@ namespace logfile
 			return string;
 		}
 
-		void scr_player_killed_stub(game::mp::gentity_s* self, const game::mp::gentity_s* inflictor, 
-			game::mp::gentity_s* attacker, int damage, const int meansOfDeath, const unsigned int weapon, 
+		void scr_player_killed_stub(game::gentity_s* self, const game::gentity_s* inflictor, 
+			game::gentity_s* attacker, int damage, const int meansOfDeath, const unsigned int weapon, 
 			const bool isAlternate, const float* vDir, const unsigned int hitLoc, int psTimeOffset, int deathAnimDuration)
 		{
+			if (game::environment::is_dedi())
 			{
-				const std::string hitloc = reinterpret_cast<const char**>(0x10B5370_b)[hitLoc];
-				const auto mod_ = convert_mod(meansOfDeath);
-
-				const auto weapon_ = get_weapon_name(weapon, isAlternate);
-
-				for (const auto& callback : player_killed_callbacks)
-				{
-					const auto state = callback.lua_state();
-
-					const auto self_ = convert_entity(state, self);
-					const auto inflictor_ = convert_entity(state, inflictor);
-					const auto attacker_ = convert_entity(state, attacker);
-
-					const auto dir = convert_vector(state, vDir);
-
-					const auto result = callback(self_, inflictor_, attacker_, damage,
-						mod_, weapon_, dir, hitloc, psTimeOffset, deathAnimDuration);
-
-					scripting::lua::handle_error(result);
-
-					if (result.valid() && result.get_type() == sol::type::number)
-					{
-						damage = result.get<int>();
+				if (self && (inflictor || attacker)) {
+					if ((attacker->client || inflictor->client) && self->client) {
+						if (attacker->client) {
+							voice_chat_globals::last_killed_by[self->client] = attacker->client;
+							voice_chat_globals::last_player_killed[attacker->client] = self->client;
+						}
+						else {
+							voice_chat_globals::last_killed_by[self->client] = inflictor->client;
+							voice_chat_globals::last_player_killed[inflictor->client] = self->client;
+						}
 					}
 				}
-
-				if (damage == 0)
-				{
-					return;
+				else if (self->client) {
+					voice_chat_globals::last_killed_by[self->client] = nullptr;
 				}
 			}
 
+
+			if (damage == 0) return;
+			
 			scr_player_killed_hook.invoke<void>(self, inflictor, attacker, damage, meansOfDeath, 
 				weapon, isAlternate, vDir, hitLoc, psTimeOffset, deathAnimDuration);
 		}
 
-		void scr_player_damage_stub(game::mp::gentity_s* self, const game::mp::gentity_s* inflictor, 
-			game::mp::gentity_s* attacker, int damage, int dflags, const int meansOfDeath, 
+		void scr_player_damage_stub(game::gentity_s* self, const game::gentity_s* inflictor, 
+			game::gentity_s* attacker, int damage, int dflags, const int meansOfDeath, 
 			const unsigned int weapon, const bool isAlternate, const float* vPoint, 
 			const float* vDir, const unsigned int hitLoc, const int timeOffset)
 		{
-			{
-				const std::string hitloc = reinterpret_cast<const char**>(0x10B5370_b)[hitLoc];
-				const auto mod_ = convert_mod(meansOfDeath);
-
-				const auto weapon_ = get_weapon_name(weapon, isAlternate);
-
-				for (const auto& callback : player_damage_callbacks)
-				{
-					const auto state = callback.lua_state();
-
-					const auto self_ = convert_entity(state, self);
-					const auto inflictor_ = convert_entity(state, inflictor);
-					const auto attacker_ = convert_entity(state, attacker);
-
-					const auto point = convert_vector(state, vPoint);
-					const auto dir = convert_vector(state, vDir);
-
-					const auto result = callback(self_, inflictor_, attacker_, 
-						damage, dflags, mod_, weapon_, point, dir, hitloc);
-
-					scripting::lua::handle_error(result);
-
-					if (result.valid() && result.get_type() == sol::type::number)
-					{
-						damage = result.get<int>();
-					}
-				}
-
-				if (damage == 0)
-				{
-					return;
-				}
-			}
+			if (damage == 0) return;
 
 			scr_player_damage_hook.invoke<void>(self, inflictor, attacker, damage, dflags, 
 				meansOfDeath, weapon, isAlternate, vPoint, vDir, hitLoc, timeOffset);
@@ -185,27 +117,7 @@ namespace logfile
 			}
 
 			const auto& hook = vm_execute_hooks[pos];
-			if (hook.is_lua_hook)
-			{
-				const auto& function = hook.lua_function;
-				const auto state = function.lua_state();
-
-				const scripting::entity self = local_id_to_entity(game::scr_VmPub->function_frame->fs.localId);
-
-				std::vector<sol::lua_value> args;
-
-				const auto top = game::scr_function_stack->top;
-
-				for (auto* value = top; value->type != game::VAR_PRECODEPOS; --value)
-				{
-					args.push_back(scripting::lua::convert(state, *value));
-				}
-
-				const auto result = function(self, sol::as_args(args));
-				scripting::lua::handle_error(result);
-				target_function = empty_function;
-			}
-			else
+			if (!hook.is_lua_hook)
 			{
 				target_function = hook.target_pos;
 			}
@@ -235,7 +147,7 @@ namespace logfile
 			a.inc(r14);
 			a.mov(dword_ptr(rbp, 0xA4), r15d);
 
-			a.jmp(SELECT_VALUE(0x3CA153_b, 0x5111B3_b));
+			a.jmp(0x5111B3_b);
 
 			a.bind(replace);
 
@@ -271,20 +183,8 @@ namespace logfile
 		}
 	}
 
-	void add_player_damage_callback(const sol::protected_function& callback)
-	{
-		player_damage_callbacks.push_back(callback);
-	}
-
-	void add_player_killed_callback(const sol::protected_function& callback)
-	{
-		player_killed_callbacks.push_back(callback);
-	}
-
 	void clear_callbacks()
 	{
-		player_damage_callbacks.clear();
-		player_killed_callbacks.clear();
 		vm_execute_hooks.clear();
 	}
 
@@ -300,7 +200,7 @@ namespace logfile
 
 	bool client_command_stub(const int client_num)
 	{
-		auto self = &game::mp::g_entities[client_num];
+		auto self = &game::g_entities[client_num];
 		char cmd[1024] = {0};
 
 		game::SV_Cmd_ArgvBuffer(0, cmd, 1024);
@@ -347,14 +247,6 @@ namespace logfile
 		return true;
 	}
 
-	void set_lua_hook(const char* pos, const sol::protected_function& callback)
-	{
-		gsc_hook_t hook;
-		hook.is_lua_hook = true;
-		hook.lua_function = callback;
-		vm_execute_hooks[pos] = hook;
-	}
-
 	void set_gsc_hook(const char* source, const char* target)
 	{
 		gsc_hook_t hook;
@@ -378,12 +270,7 @@ namespace logfile
 	public:
 		void post_unpack() override
 		{
-			utils::hook::jump(SELECT_VALUE(0x3CA145_b, 0x5111A5_b), utils::hook::assemble(vm_execute_stub), true);
-
-			if (game::environment::is_sp())
-			{
-				return;
-			}
+			utils::hook::jump(0x5111A5_b, utils::hook::assemble(vm_execute_stub), true);
 
 			scr_player_damage_hook.create(0x1CE780_b, scr_player_damage_stub);
 			scr_player_killed_hook.create(0x1CEA60_b, scr_player_killed_stub);
@@ -392,7 +279,7 @@ namespace logfile
 			scheduler::once([]()
 			{
 				logfile = dvars::register_bool("logfile", true, game::DVAR_FLAG_NONE, "Enable game logging");
-				g_log = dvars::register_string("g_log", "h1-mod\\logs\\games_mp.log", game::DVAR_FLAG_NONE, "Log file path");
+				g_log = dvars::register_string("g_log", "h2m-mod\\logs\\games_mp.log", game::DVAR_FLAG_NONE, "Log file path");
 			}, scheduler::pipeline::main);
 			g_log_printf_hook.create(game::G_LogPrintf, g_log_printf_stub);
 

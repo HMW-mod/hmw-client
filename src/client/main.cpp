@@ -1,5 +1,4 @@
 #include <std_include.hpp>
-#include "launcher/launcher.hpp"
 #include "loader/loader.hpp"
 #include "loader/component_loader.hpp"
 #include "game/game.hpp"
@@ -28,17 +27,7 @@ launcher::mode detect_mode_from_arguments()
 		return launcher::mode::server;
 	}
 
-	if (utils::flags::has_flag("multiplayer"))
-	{
-		return launcher::mode::multiplayer;
-	}
-
-	if (utils::flags::has_flag("singleplayer"))
-	{
-		return launcher::mode::singleplayer;
-	}
-
-	return launcher::mode::none;
+	return launcher::mode::multiplayer;
 }
 
 void apply_aslr_patch(std::string* data)
@@ -102,7 +91,7 @@ FARPROC load_binary(const launcher::mode mode, uint64_t* base_address)
 				}
 				else
 				{
-					throw std::runtime_error("Could not find Steam in the registry. If Steam is not installed, you must install it for H1-Mod to work.");
+					throw std::runtime_error("Could not find Steam in the registry. If Steam is not installed, you must install it for H2M-Mod to work.");
 				}
 
 				check_for_steam_install = true;
@@ -129,19 +118,16 @@ FARPROC load_binary(const launcher::mode mode, uint64_t* base_address)
 	case launcher::mode::multiplayer:
 		binary = "h1_mp64_ship.exe";
 		break;
-	case launcher::mode::singleplayer:
-		binary = "h1_sp64_ship.exe";
-		break;
 	case launcher::mode::none:
 	default:
-		throw std::runtime_error("Invalid game mode!");
+		throw std::runtime_error("Invalid or unsupported game mode!");
 	}
 
 	std::string data;
 	if (!utils::io::read_file(binary, &data))
 	{
 		throw std::runtime_error(utils::string::va(
-			"Failed to read game binary (%s)!\nPlease copy the h1-mod.exe into your Call of Duty: Modern Warfare Remastered installation folder and run it from there.",
+			"Failed to read game binary (%s)!\nPlease copy the h2m-mod.exe into your Call of Duty: Modern Warfare Remastered installation folder and run it from there.",
 			binary.data()));
 	}
 
@@ -261,12 +247,6 @@ int main()
 			if (!component_loader::post_start()) return 0;
 
 			auto mode = detect_mode_from_arguments();
-			if (mode == launcher::mode::none)
-			{
-				const launcher launcher;
-				mode = launcher.run();
-				if (mode == launcher::mode::none) return 0;
-			}
 
 			game::environment::set_mode(mode);
 

@@ -139,6 +139,8 @@ namespace steam
 				result_handlers_[result.call]->run(result.data, false, result.call);
 			}
 
+			// someone concluded this can cause issues and from my knowledge, removing this doesn't break anything (unless it does?)
+			// if it does and is discovered, please make a issue <3
 			/*for (const auto& callback : callback_list_)
 			{
 				if (callback && callback->get_i_callback() == result.type)
@@ -208,8 +210,6 @@ namespace steam
 		callbacks::unregister_callback(handler);
 	}
 
-	// all this additional work I did just for the user to manually select the file may not be needed (Proton recognizes Steam registry) 
-	// or even work half the time. because of that, we may need to revert to the old file dialog too :P -mikey
 	const char* SteamAPI_GetSteamInstallPath()
 	{
 		static std::string install_path{};
@@ -218,73 +218,22 @@ namespace steam
 			return install_path.data();
 		}
 
-		char path[MAX_PATH] = {0};
-		DWORD length = sizeof(path);
-
 		std::string path_str;
-		if (::utils::io::read_file("steam_path.txt", &path_str))
+		if (::utils::io::read_file("steam_path.txt", &path_str)) // steam_path.txt in root for directory, manually fixes issues lol
 		{
 			install_path = path_str;
 			return install_path.data();
 		}
 
-		HKEY reg_key;
-
 		// check if Steam contains information in registry for the install path
-		if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "Software\\WOW6432Node\\Valve\\Steam", 0, KEY_QUERY_VALUE,
-		                  &reg_key) == ERROR_SUCCESS)
+		HKEY reg_key;
+		if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "Software\\WOW6432Node\\Valve\\Steam", 0, KEY_QUERY_VALUE, &reg_key) == ERROR_SUCCESS)
 		{
-			RegQueryValueExA(reg_key, "InstallPath", nullptr, nullptr, reinterpret_cast<BYTE*>(path),
-			                 &length);
+			char path[MAX_PATH]{};
+			DWORD length = sizeof(path);
+			RegQueryValueExA(reg_key, "InstallPath", nullptr, nullptr, reinterpret_cast<BYTE*>(path), &length);
 			RegCloseKey(reg_key);
 			install_path = path;
-		}
-		else
-		{
-			// if we can't find Steam in the registry, let's check if we are on Wine or not.
-			// if the user is using Steam's Proton, a fork of Wine, then this code won't even be hit as it works above
-			// however, on [other] Wine [forks], this should be hit. also, the file dialog may not work.. :P
-			HKEY steam_install_reg;
-
-			if (::utils::nt::is_wine())
-			{
-				// let's check the registry to see if the user has already manually selected the Steam installation path
-				if (RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\h1-mod", 0, KEY_QUERY_VALUE, &steam_install_reg) 
-					!= ERROR_SUCCESS)
-				{
-					// create a registry key
-					if (RegCreateKeyExA(HKEY_CURRENT_USER, "Software\\h1-mod", 0, nullptr, 0, KEY_WRITE, nullptr, &steam_install_reg, nullptr) 
-						!= ERROR_SUCCESS)
-					{
-						MSG_BOX_ERROR("Could not create registry for Steam install path.");
-						return "";
-					}
-
-					auto directory_ptr = path;
-					open_folder_prompt(directory_ptr);
-					while (!strcmp(directory_ptr, ""))
-					{
-						MSG_BOX_ERROR("You must select a valid Steam directory before you can continue.");
-						open_folder_prompt(directory_ptr);
-					}
-
-					// if the directory pointer is defined, then we set "steam_install" inside "Software\\h1-mod" to the path
-					if (RegSetKeyValueA(steam_install_reg, nullptr, "steam_install", REG_SZ, ::utils::string::va("\"%s\"", path), length) != ERROR_SUCCESS)
-					{
-						MSG_BOX_ERROR("Failed to set valid Steam install path in registry, please try again.");
-						return "";
-					}
-				}
-
-				// query "steam_install" inside "Software\\h1-mod" which will define our path variable
-				RegQueryValueExA(steam_install_reg, "steam_install", nullptr, nullptr, reinterpret_cast<BYTE*>(path), &length);
-				install_path = path;
-				RegCloseKey(steam_install_reg);
-			}
-			else
-			{
-				MSG_BOX_ERROR("Failed to find a Steam installation.");
-			}
 		}
 
 		return install_path.data();

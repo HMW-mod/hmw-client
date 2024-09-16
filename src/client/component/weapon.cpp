@@ -249,6 +249,57 @@ namespace weapon
 
 			utils::hook::invoke<void>(0x39BE20_b, asset);
 		}
+
+		void draw_clip_ammo_type_one(__int64 cgameGlob, game::rectDef_s* rect, unsigned int weapIdx, float* color, int alignment, game::PlayerHandIndex hand, game::DrawClipAmmoParams* drawParams)
+		{
+			auto ammoInClip = game::BG_GetAmmoInClip(cgameGlob, weapIdx, 0, hand);
+			game::AmmoColor((void*)cgameGlob, color, weapIdx, 0, hand);
+			auto clipSize = game::BG_GetClipSize(cgameGlob, weapIdx, 0);
+
+			auto activePlacement = game::ScrPlace_GetActivePlacement();
+			auto width = game::ScrPlace_ApplyXWithoutSplitScreenScaling(activePlacement, 6.6666665f, rect->horzAlign);
+			auto height = game::ScrPlace_ApplyYWithoutSplitScreenScaling(activePlacement, 13.333333f, rect->vertAlign);
+
+			auto adjustedValue = game::ScrPlace_ApplyXWithoutSplitScreenScaling(activePlacement, 1.7777778f, rect->horzAlign);
+			game::ScrPlace_ApplyYWithoutSplitScreenScaling(activePlacement, 5.3333335f, rect->vertAlign);
+
+			auto bulletX = rect->x - width;
+			auto bulletY = rect->y;
+
+			for (auto clipIdx = 0; clipIdx < clipSize; ++clipIdx)
+			{
+				if (clipIdx == ammoInClip)
+				{
+					*color = 0.30000001f;
+					color[1] = 0.30000001f;
+					color[2] = 0.30000001f;
+				}
+
+				game::R_AddCmdDrawStretchPic(bulletX, bulletY, width, height, 0.0f, 0.0f, 1.0f, 1.0f, color, drawParams->image);
+				bulletX = bulletX - adjustedValue;
+			}
+		}
+
+		utils::hook::detour draw_clip_ammo_hook;
+		void draw_clip_ammo_stub(__int64 cgame_glob, game::rectDef_s* rect, unsigned int weapon_id, __int64 weapon_def, float* color, int alignment, game::PlayerHandIndex hand)
+		{
+			if (hand != game::PlayerHandIndex::WEAPON_HAND_LEFT)
+			{
+				draw_clip_ammo_hook.invoke<void>(cgame_glob, rect, weapon_id, weapon_def, color, alignment, hand);
+				return;
+			}
+			
+			const auto ammo_type = *(DWORD*)(weapon_def + 0x628);
+			if (ammo_type == 1)
+			{
+				game::DrawClipAmmoParams params{};
+				params.image = game::Material_RegisterHandle("h1_hud_weapwidget_ammopip_medium");
+				draw_clip_ammo_type_one(cgame_glob, rect, weapon_id, color, alignment, hand, &params);
+				return;
+			}
+
+			draw_clip_ammo_hook.invoke<void>(cgame_glob, rect, weapon_id, weapon_def, color, alignment, hand);
+		}
 	}
 
 	void clear_modifed_enums()
@@ -261,24 +312,26 @@ namespace weapon
 	public:
 		void post_unpack() override
 		{
-			if (!game::environment::is_sp())
-			{
-				// precache all weapons that are loaded in zones
-				g_setup_level_weapon_def_hook.create(0x462630_b, g_setup_level_weapon_def_stub);
+			// precache all weapons that are loaded in zones
+			g_setup_level_weapon_def_hook.create(0x462630_b, g_setup_level_weapon_def_stub);
 
-				// use tag_weapon if tag_weapon_right or tag_knife_attach are not found on model
-				xmodel_get_bone_index_hook.create(0x5C82B0_b, xmodel_get_bone_index_stub);
-				// make custom weapon index mismatch not drop in CG_SetupCustomWeapon
-				utils::hook::call(0x11B9AF_b, cw_mismatch_error_stub);
+			// use tag_weapon if tag_weapon_right or tag_knife_attach are not found on model
+			xmodel_get_bone_index_hook.create(0x5C82B0_b, xmodel_get_bone_index_stub);
+			// make custom weapon index mismatch not drop in CG_SetupCustomWeapon
+			utils::hook::call(0x11B9AF_b, cw_mismatch_error_stub);
+			// make weapon index mismatch not drop in CG_SetupWeapon
+			utils::hook::call(0xF2195_b, cw_mismatch_error_stub);
+			utils::hook::call(0x11BA1F_b, cw_mismatch_error_stub);
 
-				// patch attachment configstring so it will create if not found
-				utils::hook::call(0x41C595_b, g_find_config_string_index_stub);
+			// patch attachment configstring so it will create if not found
+			utils::hook::call(0x41C595_b, g_find_config_string_index_stub);
 
-				utils::hook::call(0x36B4D4_b, load_ddl_asset_stub);
+			utils::hook::call(0x36B4D4_b, load_ddl_asset_stub);
 
-				dvars::register_bool("sv_disableCustomClasses", 
-					false, game::DVAR_FLAG_REPLICATED, "Disable custom classes on server");
-			}
+			// fix akimbo pistol ownerdraw not working on left hand
+			draw_clip_ammo_hook.create(0x2F15A0_b, draw_clip_ammo_stub);
+
+			dvars::register_bool("sv_disableCustomClasses", false, game::DVAR_FLAG_REPLICATED, "Disable custom classes on server");
 
 #ifdef DEBUG
 			command::add("setWeaponFieldFloat", [](const command::params& params)

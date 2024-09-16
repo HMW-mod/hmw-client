@@ -64,9 +64,9 @@
 //#define DW_DEBUG
 #endif
 
-#define MSG_BOX_INFO(message) MessageBoxA(nullptr, message, "H1-Mod: INFORMATION", MB_ICONINFORMATION);
-#define MSG_BOX_WARN(message) MessageBoxA(nullptr, message, "H1-Mod: WARNING", MB_ICONWARNING);
-#define MSG_BOX_ERROR(message) MessageBoxA(nullptr, message, "H1-Mod: ERROR", MB_ICONERROR);
+#define MSG_BOX_INFO(message) MessageBoxA(nullptr, message, "h2m-mod: INFORMATION", MB_ICONINFORMATION);
+#define MSG_BOX_WARN(message) MessageBoxA(nullptr, message, "h2m-mod: WARNING", MB_ICONWARNING);
+#define MSG_BOX_ERROR(message) MessageBoxA(nullptr, message, "h2m-mod: ERROR", MB_ICONERROR);
 
 #include <map>
 #include <atomic>
@@ -110,6 +110,8 @@
 #include <google/protobuf/stubs/logging.h>
 #include <proto/auth.pb.h>
 
+#include <d3d11.h>
+
 #pragma warning(pop)
 #pragma warning(disable: 4100)
 
@@ -118,6 +120,7 @@
 #pragma comment(lib, "urlmon.lib" )
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "Crypt32.lib")
+#pragma comment(lib, "d3d11.lib")
 
 #include "resource.hpp"
 

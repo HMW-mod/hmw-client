@@ -538,11 +538,6 @@ namespace demonware
 
 		void post_load() override
 		{
-			if (game::environment::is_sp())
-			{
-				return;
-			}
-
 			server_thread = utils::thread::create_named_thread("Demonware", server_main);
 		}
 
@@ -575,13 +570,6 @@ namespace demonware
 
 		void post_unpack() override
 		{
-			if (game::environment::is_sp())
-			{
-				utils::hook::set<uint8_t>(0x68DDA0_b, 0xC3); // bdAuthSteam
-				utils::hook::set<uint8_t>(0x366600_b, 0xC3); // dwNet
-				return;
-			}
-
 			utils::hook::set<uint8_t>(0x7C0AD9_b, 0x0);  // CURLOPT_SSL_VERIFYPEER
 			utils::hook::set<uint8_t>(0x7C0AC5_b, 0xAF); // CURLOPT_SSL_VERIFYHOST
 			utils::hook::set<uint8_t>(0xA1327C_b, 0x0);  // HTTPS -> HTTP

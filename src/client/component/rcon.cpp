@@ -61,9 +61,9 @@ namespace rcon
 				return;
 			}
 
-			if (*game::mp::connect_state != nullptr && *game::connectionState >= game::CA_CONNECTED)
+			if (*game::connect_state != nullptr && *game::connectionState >= game::CA_CONNECTED)
 			{
-				const auto target = (*game::mp::connect_state)->address;
+				const auto target = (*game::connect_state)->address;
 				const auto buffer = password + " " + data;
 				network::send(target, "rcon", buffer);
 			}
@@ -85,7 +85,7 @@ namespace rcon
 			buffer.append(
 				"--- ----- --- ---- -------------------------------- ---------------- --------------------- -----\n");
 
-			const auto svs_clients = *game::mp::svs_clients;
+			const auto svs_clients = *game::svs_clients;
 			if (svs_clients == nullptr)
 			{
 				return buffer;
@@ -141,11 +141,6 @@ namespace rcon
 	public:
 		void post_unpack() override
 		{
-			if (game::environment::is_sp())
-			{
-				return;
-			}
-
 			scheduler::once([]()
 			{
 				dvars::register_string("rcon_password", "", game::DvarFlags::DVAR_FLAG_NONE,

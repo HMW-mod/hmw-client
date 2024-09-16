@@ -4,6 +4,7 @@
 #include "game/game.hpp"
 
 #include "game_console.hpp"
+#include "gui/gui.hpp"
 #include "game/ui_scripting/execution.hpp"
 
 #include <utils/hook.hpp>
@@ -14,6 +15,7 @@ namespace input
 	{
 		utils::hook::detour cl_char_event_hook;
 		utils::hook::detour cl_key_event_hook;
+		utils::hook::detour cl_mouse_move_hook;
 
 		void cl_char_event_stub(const int local_client_num, const int key)
 		{
@@ -21,6 +23,13 @@ namespace input
 			{
 				return;
 			}
+
+#ifdef DEBUG
+			if (!gui::gui_char_event(local_client_num, key))
+			{
+				return;
+			}
+#endif
 
 			cl_char_event_hook.invoke<void>(local_client_num, key);
 		}
@@ -31,9 +40,28 @@ namespace input
 			{
 				return;
 			}
+			
+#ifdef DEBUG
+			if (!gui::gui_key_event(local_client_num, key, down))
+			{
+				return;
+			}
+#endif
 
 			cl_key_event_hook.invoke<void>(local_client_num, key, down);
 		}
+
+#ifdef DEBUG
+		void cl_mouse_move_stub(const int local_client_num, int x, int y)
+		{
+			if (!gui::gui_mouse_event(local_client_num, x, y))
+			{
+				return;
+			}
+
+			cl_mouse_move_hook.invoke<void>(local_client_num, x, y);
+		}
+#endif
 	}
 
 	class component final : public component_interface
@@ -46,8 +74,11 @@ namespace input
 				return;
 			}
 
-			cl_char_event_hook.create(SELECT_VALUE(0x1AB8F0_b, 0x12C8F0_b), cl_char_event_stub);
-			cl_key_event_hook.create(SELECT_VALUE(0x1ABC20_b, 0x135A70_b), cl_key_event_stub);
+			cl_char_event_hook.create(0x12C8F0_b, cl_char_event_stub);
+			cl_key_event_hook.create(0x135A70_b, cl_key_event_stub);
+#ifdef DEBUG
+			cl_mouse_move_hook.create(0x27B310_b, cl_mouse_move_stub);
+#endif
 		}
 	};
 }

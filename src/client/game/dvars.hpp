@@ -112,6 +112,8 @@ namespace dvars
 		unsigned int flags, const std::string& description);
 	game::dvar_t* register_float_hashed(const std::string& name, float value, float min, float max,
 		unsigned int flags, const std::string& description);
+	game::dvar_t* register_vec3(const std::string& name, float x, float y, float z, float min, 
+		float max, unsigned int flags, const std::string& description);
 	game::dvar_t* register_vec4(const std::string& name, float x, float y, float z, float w, float min, 
 		float max, unsigned int flags, const std::string& description);
 }

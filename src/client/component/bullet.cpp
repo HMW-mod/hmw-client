@@ -29,12 +29,13 @@ namespace bullet
 	public:
 		void post_unpack() override
 		{
-			if (game::environment::is_sp())
+			auto flags = game::DVAR_FLAG_CHEAT;
+			if (game::environment::is_dedi())
 			{
-				return;
+				flags = game::DVAR_FLAG_NONE;
 			}
 
-			bg_surface_penetration = dvars::register_float("bg_surfacePenetration", 0.0f, 0.0f, std::numeric_limits<float>::max(), 0,
+			bg_surface_penetration = dvars::register_float("bg_surfacePenetration", 0.0f, 0.0f, std::numeric_limits<float>::max(), flags,
 				"Set to a value greater than 0 to override the bullet surface penetration depth");
 
 			bg_get_surface_penetration_depth_hook.create(0x2E1110_b, &bg_get_surface_penetration_depth_stub);

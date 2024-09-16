@@ -1,6 +1,9 @@
 #include <std_include.hpp>
 #include "../services.hpp"
 
+#include "utils/io.hpp"
+#include "utils/http.hpp"
+#include <component/console.hpp>
 namespace demonware
 {
 	bdStats::bdStats() : service(4, "bdStats")
@@ -20,7 +23,7 @@ namespace demonware
 		this->register_task(14, &bdStats::writeServerValidatedStats);
 	}
 
-	void bdStats::writeStats(service_server* server, byte_buffer* /*buffer*/) const
+	void bdStats::writeStats(service_server* server, byte_buffer* buffer) const
 	{
 		// TODO:
 		auto reply = server->create_reply(this->task_id());
@@ -104,10 +107,12 @@ namespace demonware
 		reply->send();
 	}
 
-	void bdStats::writeServerValidatedStats(service_server* server, byte_buffer* /*buffer*/) const
+	void bdStats::writeServerValidatedStats(service_server* server, byte_buffer* buffer) const
 	{
-		// TODO:
 		auto reply = server->create_reply(this->task_id());
+		const auto serverValidatedStats = new bdServerValidatedStat;
+		serverValidatedStats->deserialize(buffer);
+		reply->add(serverValidatedStats);
 		reply->send();
 	}
 }

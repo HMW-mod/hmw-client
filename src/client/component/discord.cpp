@@ -14,6 +14,7 @@
 #include <utils/string.hpp>
 #include <utils/cryptography.hpp>
 #include <utils/http.hpp>
+#include <utils/hook.hpp>
 
 #include <discord_rpc.h>
 
@@ -53,21 +54,33 @@ namespace discord
 		std::unordered_map<std::string, game::Material*> avatar_material_map;
 		game::Material* default_avatar_material{};
 
+		std::string discord_user_id{};
+
 		void update_discord_frontend()
 		{
-			discord_presence.details = SELECT_VALUE("Singleplayer", "Multiplayer");
+			discord_presence.details = "Multiplayer";
 			discord_presence.startTimestamp = 0;
 
 			static const auto in_firing_range = game::Dvar_FindVar("virtualLobbyInFiringRange");
-			if (in_firing_range != nullptr && in_firing_range->current.enabled == 1)
+			static const auto in_the_pit = game::Dvar_FindVar("virtualLobbyInThePit");
+
+			// change presence in firing range
+			if (in_firing_range != nullptr && in_firing_range->current.enabled == true)
 			{
 				discord_presence.state = "Firing Range";
-				discord_presence.largeImageKey = "mp_vlobby_room";
+				discord_presence.largeImageKey = "mp_firingrange";
+
+				// if firing range is true and the pit is also true, use cool pit presence
+				if (in_the_pit != nullptr && in_the_pit->current.enabled == true)
+				{
+					discord_presence.state = "The Pit";
+					discord_presence.largeImageKey = "mp_thepit";
+				}
 			}
 			else
 			{
 				discord_presence.state = "Main Menu";
-				discord_presence.largeImageKey = SELECT_VALUE("menu_singleplayer", "menu_multiplayer");
+				discord_presence.largeImageKey = "menu_multiplayer";
 			}
 
 			Discord_UpdatePresence(&discord_presence);
@@ -80,9 +93,9 @@ namespace discord
 
 			discord_strings.large_image_key = mapname;
 
-			const auto presence_key = utils::string::va("PRESENCE_%s%s", SELECT_VALUE("SP_", ""), mapname);
-			if (game::DB_XAssetExists(game::ASSET_TYPE_LOCALIZE, presence_key) && 
-				!game::DB_IsXAssetDefault(game::ASSET_TYPE_LOCALIZE, presence_key))
+			const auto presence_key = utils::string::va("PRESENCE_%s", mapname);
+			if (game::DB_XAssetExists(game::ASSET_TYPE_LOCALIZE_ENTRY, presence_key) &&
+				!game::DB_IsXAssetDefault(game::ASSET_TYPE_LOCALIZE_ENTRY, presence_key))
 			{
 				mapname = game::UI_SafeTranslateString(presence_key);
 			}
@@ -98,7 +111,7 @@ namespace discord
 
 				discord_strings.details = std::format("{} on {}", gametype, mapname);
 
-				const auto client_state = *game::mp::client_state;
+				const auto client_state = *game::client_state;
 				if (client_state != nullptr)
 				{
 					discord_presence.partySize = client_state->num_players;
@@ -109,6 +122,8 @@ namespace discord
 					discord_strings.state = "Private Match";
 					discord_presence.partyMax = max_clients_dvar->current.integer;
 					discord_presence.partyPrivacy = DISCORD_PARTY_PRIVATE;
+					discord_strings.party_id = "";
+					discord_strings.join_secret = "";
 				}
 				else
 				{
@@ -135,10 +150,6 @@ namespace discord
 					discord_strings.small_image_key = server_discord_info->image;
 					discord_strings.small_image_text = server_discord_info->image_text;
 				}
-			}
-			else if (game::environment::is_sp())
-			{
-				discord_strings.details = mapname;
 			}
 
 			if (discord_presence.startTimestamp == 0)
@@ -243,6 +254,7 @@ namespace discord
 			DiscordRichPresence presence{};
 			presence.instance = 1;
 			presence.state = "";
+			discord_user_id = std::string(request->userId);
 			console::info("Discord: Ready on %s (%s)\n", request->username, request->userId);
 			Discord_UpdatePresence(&presence);
 		}
@@ -254,8 +266,6 @@ namespace discord
 
 		void join_game(const char* join_secret)
 		{
-			console::debug("Discord: join_game called with secret '%s'\n", join_secret);
-
 			scheduler::once([=]
 			{
 				game::netadr_s target{};
@@ -363,6 +373,53 @@ namespace discord
 			set_binding("discord_accept", game::K_F1);
 			set_binding("discord_deny", game::K_F2);
 		}
+
+		utils::hook::detour ui_activision_tag_allowed_hook;
+		bool ui_activision_tag_allowed_stub(char* clantag, char* steamID)
+		{
+			if (discord_user_id.c_str() == NULL || !strcmp("", discord_user_id.c_str()))
+			{
+				return false;
+			}
+
+			game::StringTable* gamertags_pc;
+			game::StringTable* clantags;
+
+			if (clantag && *clantag)
+			{
+				utils::hook::invoke<void>(0x5A0A80_b, "mp/activisiongamertags_pc.csv", &gamertags_pc);
+				utils::hook::invoke<void>(0x5A0A80_b, "mp/activisionclantags.csv", &clantags);
+
+				if (!gamertags_pc || !gamertags_pc->rowCount || !clantags || !clantags->rowCount)
+				{
+					return false;
+				}
+
+				auto clantag_lookup = utils::hook::invoke<const char*>(0x5A0B10_b, clantags, 1, clantag, 0);
+				if (!*clantag_lookup)
+				{
+					return true;
+				}
+
+				auto gamertags_row_count = utils::hook::invoke<int>(0x5A0B00_b, gamertags_pc);
+				for (auto row_i = 0; row_i < gamertags_row_count; ++row_i)
+				{
+					auto tag = utils::hook::invoke<char*>(0x5A0AC0_b, gamertags_pc, row_i, 0);
+					auto id = utils::hook::invoke<char*>(0x5A0AC0_b, gamertags_pc, row_i, 1);
+
+					if (!strcmp(discord_user_id.c_str(), id))
+					{
+						// let anyone with H2M tag use anything
+						if (!strcmp(tag, "H2M") || !strcmp(clantag_lookup, clantag))
+						{
+							return true;
+						}
+					}
+				}
+			}
+
+			return false;
+		}
 	}
 
 	game::Material* get_avatar_material(const std::string& id)
@@ -383,6 +440,11 @@ namespace discord
 		{
 			Discord_Respond(id.data(), reply);
 		}, scheduler::pipeline::async);
+	}
+
+	std::string get_discord_id()
+	{
+		return discord_user_id;
 	}
 
 	class component final : public component_interface
@@ -412,7 +474,7 @@ namespace discord
 				handlers.joinRequest = nullptr;
 			}
 
-			Discord_Initialize("947125042930667530", &handlers, 1, nullptr);
+			Discord_Initialize("1201826584466821130", &handlers, 1, nullptr);
 
 			if (game::environment::is_mp())
 			{
@@ -437,6 +499,8 @@ namespace discord
 			{
 				ui_scripting::notify("discord_response", {{"accept", false}});
 			});
+
+			ui_activision_tag_allowed_hook.create(0x1D9800_b, ui_activision_tag_allowed_stub);
 		}
 
 		void pre_destroy() override

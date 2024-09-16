@@ -42,14 +42,18 @@ namespace logger
 
 		void com_error_stub(const int error, const char* msg, ...)
 		{
-			char buffer[2048]{};
-			va_list ap;
+			char buffer[2048];
 
-			va_start(ap, msg);
-			vsnprintf_s(buffer, _TRUNCATE, msg, ap);
-			va_end(ap);
+			{
+				va_list ap;
+				va_start(ap, msg);
 
-			console::error("Error: %s\n", buffer);
+				vsnprintf_s(buffer, sizeof(buffer), _TRUNCATE, msg, ap);
+
+				va_end(ap);
+
+				console::error("Error: %s\n", buffer);
+			}
 
 			party::clear_sv_motd(); // clear sv_motd on error if it exists
 
@@ -112,9 +116,9 @@ namespace logger
 			if (!game::environment::is_dedi())
 			{
 				// lua stuff
-				utils::hook::jump(SELECT_VALUE(0x106010_b, 0x27CBB0_b), print_dev);   // debug
-				utils::hook::jump(SELECT_VALUE(0x107680_b, 0x27E210_b), print_error); // error
-				utils::hook::jump(SELECT_VALUE(0x0E6E30_b, 0x1F6140_b), print);      // print
+				utils::hook::jump(0x27CBB0_b, print_dev);   // debug
+				utils::hook::jump(0x27E210_b, print_error); // error
+				utils::hook::jump(0x1F6140_b, print);      // print
 
 				if (game::environment::is_mp())
 				{
@@ -125,9 +129,11 @@ namespace logger
 				}
 			}
 
+			utils::hook::copy_string(0x91ED90_b, "Could not look up \"%s\" entry of \"%s\" array in playerdata.ddl");
+
 			com_error_hook.create(game::Com_Error, com_error_stub);
 
-			logger_dev = dvars::register_bool("logger_dev", false, game::DVAR_FLAG_SAVED, "Print dev stuff");
+			logger_dev = dvars::register_bool("logger_dev", false, game::DVAR_FLAG_NONE | game::DVAR_FLAG_READ, "Print dev stuff");
 		}
 	};
 }

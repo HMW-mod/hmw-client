@@ -14,6 +14,7 @@ namespace dvar_cheats
 {
 	void apply_sv_cheats(const game::dvar_t* dvar, const game::DvarSetSource source, game::dvar_value* value)
 	{
+#ifdef DEBUG
 		static const auto sv_cheats_hash = game::generateHashValue("sv_cheats");
 
 		if (dvar && dvar->hash == sv_cheats_hash)
@@ -37,6 +38,7 @@ namespace dvar_cheats
 				}
 			}
 		}
+#endif
 	}
 
 	bool dvar_flag_checks(const game::dvar_t* dvar, const game::DvarSetSource source)
@@ -48,13 +50,13 @@ namespace dvar_cheats
 
 		if ((dvar->flags & game::DvarFlags::DVAR_FLAG_WRITE))
 		{
-			console::error("%s is write protected\n", name);
+			console::warn("%s is write protected\n", name);
 			return false;
 		}
 
 		if ((dvar->flags & game::DvarFlags::DVAR_FLAG_READ))
 		{
-			console::error("%s is read only\n", name);
+			console::warn("%s is read only\n", name);
 			return false;
 		}
 
@@ -67,14 +69,14 @@ namespace dvar_cheats
 			if ((dvar->flags & game::DvarFlags::DVAR_FLAG_REPLICATED) && (cl_ingame && cl_ingame->current.enabled) && (
 				sv_running && !sv_running->current.enabled))
 			{
-				console::error("%s can only be changed by the server\n", name);
+				console::warn("%s can only be changed by the server\n", name);
 				return false;
 			}
 
 			const auto sv_cheats = game::Dvar_FindVar("sv_cheats");
 			if ((dvar->flags & game::DvarFlags::DVAR_FLAG_CHEAT) && (sv_cheats && !sv_cheats->current.enabled))
 			{
-				console::error("%s is cheat protected\n", name);
+				console::warn("%s is cheat protected\n", name);
 				return false;
 			}
 		}
@@ -127,18 +129,23 @@ namespace dvar_cheats
 	public:
 		void post_unpack() override
 		{
-			if (game::environment::is_sp())
-			{
-				return;
-			}
 
 			utils::hook::nop(0x1861D4_b, 8); // let our stub handle zero-source sets
 			utils::hook::jump(0x1861DF_b, get_dvar_flag_checks_stub(), true); // check extra dvar flags when setting values
 
 			scheduler::once([]
 			{
-				dvars::register_bool("sv_cheats", false, game::DvarFlags::DVAR_FLAG_REPLICATED,
-				                     "Allow cheat commands and dvars on this server");
+#ifdef DEBUG
+				const auto cheat_flags = game::DVAR_FLAG_NONE | game::DVAR_FLAG_REPLICATED;
+#else
+				auto cheat_flags = game::DVAR_FLAG_READ | game::DVAR_FLAG_REPLICATED;
+				if (game::environment::is_dedi())
+				{
+					cheat_flags = game::DVAR_FLAG_NONE | game::DVAR_FLAG_REPLICATED;
+				}
+#endif
+
+				dvars::register_bool("sv_cheats", false, cheat_flags, "Allow cheat commands and dvars on this server");
 			}, scheduler::pipeline::main);
 		}
 	};

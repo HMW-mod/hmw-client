@@ -45,7 +45,7 @@ namespace slowmotion
 				const auto end = (args.size() > 0 ? get_timescale_safe<float, int>(args[1]) : 1.0f);
 				const auto duration = (args.size() > 1 ? get_timescale_safe<int, float>(args[2]) : 1) * 1000;
 
-				game::SV_SetConfigstring(10, utils::string::va("%i %i %g %g", *game::mp::gameTime, duration, start, end));
+				game::SV_SetConfigstring(10, utils::string::va("%i %i %g %g", *game::gameTime, duration, start, end));
 				game::Com_SetSlowMotion(start, end, duration);
 
 				return scripting::script_value{};

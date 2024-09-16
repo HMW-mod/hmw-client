@@ -20,6 +20,7 @@ namespace fps
 		utils::hook::detour r_wait_end_time_hook;
 
 		game::dvar_t* cg_drawfps = nullptr;
+		game::dvar_t* cg_drawviewpos = nullptr;
 		game::dvar_t* cg_drawping = nullptr;
 		game::dvar_t* com_wait_end_frame_mode = nullptr;
 
@@ -116,18 +117,52 @@ namespace fps
 			}
 		}
 
+		void cg_draw_viewpos()
+		{
+			if (!game::CL_IsCgameInitialized() || game::VirtualLobby_Loaded() || *game::client_state == nullptr)
+			{
+				return;
+			}
+
+			if (cg_drawviewpos->current.enabled)
+			{
+				auto refdef = *game::refdef;
+				if (refdef == nullptr)
+				{
+					return;
+				}
+
+				const auto font = game::R_RegisterFont("fonts/fira_mono_regular.ttf", 15);
+				if (font)
+				{
+					const auto viewpos_string = utils::string::va("(%.1f %.1f %.1f)", refdef->org[0], refdef->org[1], refdef->org[2]);
+
+					const auto x = (game::ScrPlace_GetViewPlacement()->realViewportSize[0] - 15.0f) - game::R_TextWidth(viewpos_string, 0x7FFFFFFF, font);
+					const auto y = font->pixelHeight + 25.f;
+
+					game::R_AddCmdDrawText(viewpos_string, 0x7FFFFFFF, font, x, y, 1.f, 1.f, 0.0f, fps_color_good, 6);
+				}
+			}
+		}
+
 		void cg_draw_ping()
 		{
-			if (cg_drawping->current.integer > 0 && game::CL_IsCgameInitialized() && !game::VirtualLobby_Loaded() && *game::mp::client_state)
+			if (!game::CL_IsCgameInitialized() || game::VirtualLobby_Loaded() || *game::client_state == nullptr)
+			{
+				return;
+			}
+
+			if (cg_drawping->current.enabled)
 			{
 				const auto font = game::R_RegisterFont("fonts/consolefont", 20);
-				const auto ping_string = utils::string::va("Ping: %i", (*game::mp::client_state)->ping);
-
-				const auto x = (game::ScrPlace_GetViewPlacement()->realViewportSize[0] - 375.0f) - game::R_TextWidth(
-					ping_string, 0x7FFFFFFF, font);
-
-				const auto y = font->pixelHeight + 15.f;
-				game::R_AddCmdDrawText(ping_string, 0x7FFFFFFF, font, x, y, 1.f, 1.f, 0.0f, ping_color, 6);
+				if (font)
+				{
+					const auto ping_string = utils::string::va("Ping: %i", (*game::client_state)->ping);
+					const auto x = (game::ScrPlace_GetViewPlacement()->realViewportSize[0] - 375.0f) - game::R_TextWidth(
+						ping_string, 0x7FFFFFFF, font);
+					const auto y = font->pixelHeight + 15.f;
+					game::R_AddCmdDrawText(ping_string, 0x7FFFFFFF, font, x, y, 1.f, 1.f, 0.0f, ping_color, 6);
+				}
 			}
 		}
 
@@ -223,7 +258,7 @@ namespace fps
 
 			if (game::environment::is_mp())
 			{
-				utils::hook::jump(SELECT_VALUE(0, 0x343847_b), utils::hook::assemble([](utils::hook::assembler& a)
+				utils::hook::jump(0x343847_b, utils::hook::assemble([](utils::hook::assembler& a)
 				{
 					a.pushad64();
 					a.call_aligned(perf_update);
@@ -257,18 +292,25 @@ namespace fps
 				// fix ping value
 				utils::hook::nop(0x342C6C_b, 2);
 
-				cg_drawping = dvars::register_int("cg_drawPing", 0, 0, 1, game::DVAR_FLAG_SAVED, "Choose to draw ping");
+				// Don't register cg_drawviewpos
+				utils::hook::nop(0x31D785_b, 0x5);
+				utils::hook::nop(0x31D78E_b, 0x7);
 
+				cg_drawping = dvars::register_bool("cg_drawPing", 0, game::DVAR_FLAG_SAVED, "Choose to draw ping");
 				scheduler::loop(cg_draw_ping, scheduler::pipeline::renderer);
+				
+				cg_drawviewpos = dvars::register_bool("cg_drawviewpos", 0, game::DVAR_FLAG_SAVED, "Draw current position");
+				scheduler::loop(cg_draw_viewpos, scheduler::pipeline::renderer);
 			}
 
-			dvars::register_bool("cg_infobar_fps", false, game::DVAR_FLAG_SAVED, "Show server latency");
-			dvars::register_bool("cg_infobar_ping", false, game::DVAR_FLAG_SAVED, "Show FPS counter");
+			dvars::register_bool("cg_infobar_fps", false, game::DVAR_FLAG_SAVED, "Show FPS counter");
+			dvars::register_bool("cg_infobar_ping", false, game::DVAR_FLAG_SAVED, "Show server latency");
+			dvars::register_bool("cg_infobar_streak", false, game::DVAR_FLAG_SAVED, "Show current killstreak");
 
 			// Make fps capping accurate
 			com_wait_end_frame_mode = dvars::register_int("com_waitEndFrameMode", 0, 0, 2, game::DVAR_FLAG_SAVED, "Wait end frame mode (0 = default, 1 = sleep(n), 2 = loop sleep(0)");
-			r_wait_end_time_hook.create(SELECT_VALUE(0x3A7330_b, 0x1C2420_b), r_wait_end_frame_stub);
-			com_frame_hook.create(SELECT_VALUE(0x385210_b, 0x15A960_b), com_frame_stub);
+			r_wait_end_time_hook.create(0x1C2420_b, r_wait_end_frame_stub);
+			com_frame_hook.create(0x15A960_b, com_frame_stub);
 		}
 	};
 }

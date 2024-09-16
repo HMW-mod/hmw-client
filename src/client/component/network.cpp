@@ -5,6 +5,7 @@
 #include "network.hpp"
 #include "console.hpp"
 #include "dvars.hpp"
+#include "party.hpp"
 
 #include "game/dvars.hpp"
 #include "game/game.hpp"
@@ -16,6 +17,7 @@ namespace network
 {
 	namespace
 	{
+		std::unordered_map<std::string, raw_callback> raw_callbacks;
 
 		std::unordered_map<std::string, callback>& get_callbacks()
 		{
@@ -27,15 +29,25 @@ namespace network
 		{
 			const auto cmd_string = utils::string::to_lower(command);
 			auto& callbacks = get_callbacks();
-			const auto handler = callbacks.find(cmd_string);
 			const auto offset = cmd_string.size() + 5;
-			if (message->cursize < offset || handler == callbacks.end())
+			if (message->cursize < offset)
+			{
+				return false;
+			}
+
+			// raw handler
+			if (const auto raw_handler = raw_callbacks.find(cmd_string); raw_handler != raw_callbacks.end())
+			{
+				raw_handler->second(address, message);
+			}
+
+			const auto handler = callbacks.find(cmd_string);
+			if (handler == callbacks.end())
 			{
 				return false;
 			}
 
 			const std::string data(message->data + offset, message->cursize - offset);
-
 			handler->second(*address, data);
 #ifdef DEBUG
 			console::info("[Network] Handling command %s\n", cmd_string.data());
@@ -132,16 +144,21 @@ namespace network
 			closesocket(sock);
 			return 0;
 		}
+	}
 
-		void* memmove_stub(void* dst, void* src, size_t size)
-		{
-			return std::memmove(dst, src, std::min(size, 1262ull));
-		}
+	void* memmove_stub(void* dst, void* src, size_t size)
+	{
+		return std::memmove(dst, src, std::min(size, 1262ull));
 	}
 
 	void on(const std::string& command, const callback& callback)
 	{
 		get_callbacks()[utils::string::to_lower(command)] = callback;
+	}
+
+	void on_raw(const std::string& command, const raw_callback& callback)
+	{
+		raw_callbacks[utils::string::to_lower(command)] = callback;
 	}
 
 	int dw_send_to_stub(const int size, const char* src, game::netadr_s* to)
@@ -229,11 +246,6 @@ namespace network
 		void post_unpack() override
 		{
 			{
-				if (game::environment::is_sp())
-				{
-					return;
-				}
-
 				// redirect dw_sendto to raw socket
 				utils::hook::jump(0x5EEC90_b, dw_send_to_stub);
 				utils::hook::jump(game::Sys_SendPacket, dw_send_to_stub);
@@ -309,6 +321,21 @@ namespace network
 
 				// ignore built in "print" oob command and add in our own
 				utils::hook::set<std::uint8_t>(0x12F817_b, 0xEB);
+				if (!game::environment::is_dedi())
+				{
+					// we need this on the client for RCon
+					on("print", [](const game::netadr_s& address, const std::string& message)
+					{
+						if (address != party::get_target())
+						{
+							return;
+						}
+
+						console::info("%s", message.data());
+					});
+				}
+
+
 
 				// Use our own socket since the game's socket doesn't work with non localhost addresses
 				// why? no idea

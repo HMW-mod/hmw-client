@@ -15,6 +15,7 @@ namespace videos
 
 		void playvid(const char* name, const int a2, const int a3)
 		{
+			/*
 			const auto vid = video_replaces.find(name);
 			if (vid != video_replaces.end())
 			{
@@ -26,7 +27,7 @@ namespace videos
 					name = vid->second.data();
 				}
 			}
-
+			*/
 			return playvid_hook.invoke<void>(name, a2, a3);
 		}
 	}
@@ -36,18 +37,12 @@ namespace videos
 	public:
 		void post_unpack() override
 		{
-			playvid_hook.create(SELECT_VALUE(0x1404A9D00, 0x1405B0AF0), &playvid);
+			playvid_hook.create(0x1405B0AF0, &playvid);
 
 			if (game::environment::is_mp())
 			{
 				video_replaces["menus_bg_comp2"] = "menus_bg_h1mod";
 				video_replaces["mp_menus_bg_options"] = "menus_bg_h1mod_blur";
-			}
-			else if (game::environment::is_sp())
-			{
-				video_replaces["sp_menus_bg_main_menu"] = "menus_bg_h1mod_sp";
-				video_replaces["sp_menus_bg_campaign"] = "menus_bg_h1mod_sp";
-				video_replaces["sp_menus_bg_options"] = "menus_bg_h1mod_sp";
 			}
 		}
 	};

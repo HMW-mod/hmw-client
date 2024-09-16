@@ -22,15 +22,16 @@ namespace materials
 	{
 		utils::hook::detour db_material_streaming_fail_hook;
 		utils::hook::detour db_get_material_index_hook;
+		utils::hook::detour cl_drawstretchpic_hook;
+		utils::hook::detour CL_drawquadpicstperspective_hook;
+
+		utils::hook::detour material_compare_hook;
 
 #ifdef DEBUG
-		utils::hook::detour material_compare_hook;
-		utils::hook::detour set_pixel_texture_hook;
-
 		const game::dvar_t* debug_materials = nullptr;
 #endif
 
-		char constant_table[0x20] = {};
+		game::MaterialConstantDef constant_table{};
 		
 		int db_material_streaming_fail_stub(game::Material* material)
 		{
@@ -52,7 +53,6 @@ namespace materials
 			return db_get_material_index_hook.invoke<unsigned int>(material);
 		}
 
-#ifdef DEBUG
 		char material_compare_stub(unsigned int index_a, unsigned int index_b)
 		{
 			char result = 0;
@@ -63,15 +63,18 @@ namespace materials
 			}
 			__except (EXCEPTION_EXECUTE_HANDLER)
 			{
+#ifdef DEBUG
 				const auto* material_a = utils::hook::invoke<game::Material*>(0x395FE0_b, index_a);
 				const auto* material_b = utils::hook::invoke<game::Material*>(0x395FE0_b, index_b);
 				console::error("Material_Compare: %s - %s (%d - %d)", 
 					material_a->name, material_b->name, material_a->info.sortKey, material_b->info.sortKey);
+#endif
 			}
 
 			return result;
 		}
 
+#ifdef DEBUG
 		void print_material(const game::Material* material)
 		{
 			if (!debug_materials || !debug_materials->current.enabled)
@@ -102,27 +105,94 @@ namespace materials
 			a.bind(loc_6AD59B);
 			a.jmp(0x6AD59B_b);
 		}
-
-		void set_pixel_texture_stub(void* cmd_buf_state, unsigned int a2, const game::GfxImage* image)
-		{
-			if (!debug_materials || !debug_materials->current.enabled)
-			{
-				set_pixel_texture_hook.invoke<void>(cmd_buf_state, a2, image);
-				return;
-			}
-
-			if (image && image->name)
-			{
-				console::debug("set_pixel_texture_stub: \"%s\"\n", image->name);
-			}
-			else
-			{
-				console::error("set_pixel_texture_stub: texture has no name or is nullptr\n");
-			}
-
-			set_pixel_texture_hook.invoke<void>(cmd_buf_state, a2, image);
-		}
 #endif
+
+		bool is_scrambler_on()
+		{
+			auto omnvar_index = game::Omnvar_GetIndexByName("ui_uav_scrambler_on");
+			auto omnvar_data = game::CG_Omnvar_GetData(0, omnvar_index);
+			return omnvar_data->current.integer;
+		}
+
+		void cl_drawstretchpic_stub(const game::ScreenPlacement* a1, float a2, float a3, float a4, float a5, int a6, int a7, float s1, float t1, float s2, float t2, const float* color, game::Material* material)
+		{
+			if (utils::string::starts_with(material->info.name, "compass_map_"))
+			{
+				if (is_scrambler_on())
+				{
+					material = game::Material_RegisterHandle("compass_scrambled");
+				}
+			}
+
+			cl_drawstretchpic_hook.invoke<void>(a1, a2, a3, a4, a5, a6, a7, s1, t1, s2, t2, color, material);
+		}
+
+		void CL_drawquadpicstperspective_stub(const game::ScreenPlacement* a1, const float(*a2)[4], float a3, float a4, float a5, float a6, const float* a7, game::Material* material)
+		{
+			if (utils::string::starts_with(material->info.name, "compass_map_"))
+			{
+				if (is_scrambler_on())
+				{
+					material = game::Material_RegisterHandle("compass_scrambled");
+				}
+			}
+
+			CL_drawquadpicstperspective_hook.invoke<void>(a1, a2, a3, a4, a5, a6, a7, material);
+		}
+
+		utils::hook::detour CG_CompassDrawPlayerPointers_MP_hook;
+		void CG_CompassDrawPlayerPointers_MP_Stub(int localClientNumber, int CompassType, void* rectDef1, void* rectDef2, game::Material* material, float const* a1, float const* a2)
+		{
+			if (is_scrambler_on())
+				return;
+
+			CG_CompassDrawPlayerPointers_MP_hook.invoke<void>(localClientNumber, CompassType, rectDef1, rectDef2, material, a1, a2);
+		}
+
+		utils::hook::detour CG_CompassDrawPlayer_hook;
+		void CG_CompassDrawPlayer_Stub(int localClientNumber, int CompassType, void* rectDef1, void* rectDef2, game::Material* material, float const* a1)
+		{
+			if (is_scrambler_on())
+				return;
+
+			CG_CompassDrawPlayer_hook.invoke<void>(localClientNumber, CompassType, rectDef1, rectDef2, material, a1);
+		}
+
+		utils::hook::detour CG_CompassDrawFriendlies_hook;
+		void CG_CompassDrawFriendlies_Stub(int localClientNumber, int CompassType, void* rectDef1, void* rectDef2, float const* a1, float const* a2)
+		{
+			if (is_scrambler_on())
+				return;
+
+			CG_CompassDrawFriendlies_hook.invoke<void>(localClientNumber, CompassType, rectDef1, rectDef2, a1, a2);
+		}
+
+		utils::hook::detour CG_CompassDrawEnemies_hook;
+		void CG_CompassDrawEnemies_Stub(int localClientNumber, int CompassType, void* rectDef1, void* rectDef2, float const* a1, float const* a2)
+		{
+			if (is_scrambler_on())
+				return;
+
+			CG_CompassDrawEnemies_hook.invoke<void>(localClientNumber, CompassType, rectDef1, rectDef2, a1, a2);
+		}
+
+		utils::hook::detour Compass_TurretDraw_hook;
+		void Compass_TurretDraw_Stub(int localClientNumber, int CompassType, void* rectDef1, void* rectDef2, float const* a1, float const* a2)
+		{
+			if (is_scrambler_on())
+				return;
+
+			Compass_TurretDraw_hook.invoke<void>(localClientNumber, CompassType, rectDef1, rectDef2, a1, a2);
+		}
+
+		utils::hook::detour CG_CompassDrawPlanes_hook;
+		void CG_CompassDrawPlanes_Stub(int localClientNumber, int CompassType, void* rectDef1, void* rectDef2, float const* a1, float const* a2)
+		{
+			if (is_scrambler_on())
+				return;
+
+			CG_CompassDrawPlanes_hook.invoke<void>(localClientNumber, CompassType, rectDef1, rectDef2, a1, a2);
+		}
 	}
 
 	bool setup_material_image(game::Material* material, const std::string& data)
@@ -134,8 +204,8 @@ namespace materials
 		}
 
 		const auto image = material->textureTable->u.image;
-		image->imageFormat = 0x1000003;
-		image->resourceSize = -1;
+		*(int*)&image->mapType = 0x1000003;
+		*(int*)&image->picmip = -1;
 
 		auto raw_image = utils::image{data};
 
@@ -145,7 +215,7 @@ namespace materials
 		resource_data.pSysMem = raw_image.get_buffer();
 
 		game::Image_Setup(image, raw_image.get_width(), raw_image.get_height(), image->depth, image->numElements,
-			image->imageFormat, DXGI_FORMAT_R8G8B8A8_UNORM, image->name, &resource_data);
+			image->mapType, DXGI_FORMAT_R8G8B8A8_UNORM, image->name, &resource_data);
 		return true;
 	}
 
@@ -164,9 +234,9 @@ namespace materials
 		material->name = utils::memory::duplicate_string(name);
 		image->name = material->name;
 
-		image->textures.map = nullptr;
-		image->textures.shaderView = nullptr;
-		image->textures.shaderViewAlternate = nullptr;
+		image->texture.map = nullptr;
+		image->texture.shaderView = nullptr;
+		image->texture.shaderViewAlternate = nullptr;
 		texture_table->u.image = image;
 
 		material->textureTable = texture_table;
@@ -185,9 +255,9 @@ namespace materials
 			}
 		};
 
-		try_release(&material->textureTable->u.image->textures.map);
-		try_release(&material->textureTable->u.image->textures.shaderView);
-		try_release(&material->textureTable->u.image->textures.shaderViewAlternate);
+		try_release(&material->textureTable->u.image->texture.map);
+		try_release(&material->textureTable->u.image->texture.shaderView);
+		try_release(&material->textureTable->u.image->texture.shaderViewAlternate);
 
 		utils::memory::free(material->textureTable->u.image);
 		utils::memory::free(material->textureTable);
@@ -205,23 +275,28 @@ namespace materials
 				return;
 			}
 
-			db_material_streaming_fail_hook.create(SELECT_VALUE(0x1FB400_b, 0x3A1600_b), db_material_streaming_fail_stub);
-			db_get_material_index_hook.create(SELECT_VALUE(0x1F1D80_b, 0x396000_b), db_get_material_index_stub);
+			db_material_streaming_fail_hook.create(0x3A1600_b, db_material_streaming_fail_stub);
+			db_get_material_index_hook.create(0x396000_b, db_get_material_index_stub);
+
+			material_compare_hook.create(0x693B90_b, material_compare_stub);
 
 #ifdef DEBUG
-			if (!game::environment::is_sp())
+			utils::hook::jump(0x6AD55C_b, utils::hook::assemble(print_current_material_stub), true);
+
+			scheduler::once([]
 			{
-				material_compare_hook.create(0x693B90_b, material_compare_stub);
-				set_pixel_texture_hook.create(0x6B33E0_b, set_pixel_texture_stub);
-
-				utils::hook::jump(0x6AD55C_b, utils::hook::assemble(print_current_material_stub), true);
-
-				scheduler::once([]
-				{
-					debug_materials = dvars::register_bool("debug_materials", false, game::DVAR_FLAG_NONE, "Print current material and images");
-				}, scheduler::main);
-			}
+				debug_materials = dvars::register_bool("debug_materials", false, game::DVAR_FLAG_NONE, "Print current material and images");
+			}, scheduler::main);
 #endif
+
+			cl_drawstretchpic_hook.create(0x33B110_b, cl_drawstretchpic_stub); //used for map selectors
+			CL_drawquadpicstperspective_hook.create(0x33AFE0_b, CL_drawquadpicstperspective_stub); //used for FULL minimap
+			CG_CompassDrawPlayerPointers_MP_hook.create(0x2F9770_b, CG_CompassDrawPlayerPointers_MP_Stub);
+			CG_CompassDrawPlayer_hook.create(0x2F7860_b, CG_CompassDrawPlayer_Stub);
+			CG_CompassDrawFriendlies_hook.create(0x2FC610_b, CG_CompassDrawFriendlies_Stub);
+			CG_CompassDrawEnemies_hook.create(0x2FBDC0_b, CG_CompassDrawEnemies_Stub);
+			Compass_TurretDraw_hook.create(0x3003D0_b, Compass_TurretDraw_Stub);
+			CG_CompassDrawPlanes_hook.create(0x2FD210_b, CG_CompassDrawPlanes_Stub);
 		}
 	};
 }

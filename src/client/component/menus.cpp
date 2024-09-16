@@ -31,7 +31,7 @@ namespace menus
 		game::XAssetHeader load_script_menu_internal(const char* menu)
 		{
 			const char* menu_file = utils::string::va("ui_mp/scriptmenus/%s.menu", menu);
-			return game::DB_FindXAssetHeader(game::ASSET_TYPE_MENUFILE, menu_file, 1);
+			return game::DB_FindXAssetHeader(game::ASSET_TYPE_MENULIST, menu_file, 1);
 		}
 
 		bool load_script_menu(int client_num, const char* menu)
@@ -179,6 +179,7 @@ namespace menus
 			utils::hook::call(0x1E5143_b, lui_toggle_menu_stub); // (CL_ExecBinding)
 			utils::hook::call(0x131377_b, lui_toggle_menu_stub); // (UI_SetActiveMenu)
 
+#ifdef DEBUG
 			command::add("openmenu", [](const command::params& params)
 			{
 				if (params.size() != 2)
@@ -190,6 +191,7 @@ namespace menus
 				*game::keyCatchers = *game::keyCatchers & 1 | 0x10;
 				game::Menus_OpenByName(0, params.get(1));
 			});
+#endif
 		}
 	};
 }

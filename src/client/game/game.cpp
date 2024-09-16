@@ -27,13 +27,13 @@ namespace game
 
 	bool VirtualLobby_Loaded()
 	{
-		return !game::environment::is_sp() && *mp::virtualLobby_loaded == 1;
+		return *virtualLobby_loaded == 1;
 	}
 
 	void SV_GameSendServerCommand(int client_num, svscmd_type type, const char* text)
 	{
-		const auto svs_clients = *mp::svs_clients;
-		if (svs_clients == nullptr)
+		const auto svs_clients_ = *game::svs_clients;
+		if (svs_clients_ == nullptr)
 		{
 			return;
 		}
@@ -44,42 +44,18 @@ namespace game
 		}
 		else
 		{
-			SV_SendServerCommand(&svs_clients[client_num], type, "%s", text);
-		}
-	}
-
-	void Cbuf_AddText(int local_client_num, int controller_index, const char* cmd)
-	{
-		if (game::environment::is_sp())
-		{
-			sp::Cbuf_AddText(local_client_num, cmd);
-		}
-		else
-		{
-			mp::Cbuf_AddText(local_client_num, controller_index, cmd);
+			SV_SendServerCommand(&svs_clients_[client_num], type, "%s", text);
 		}
 	}
 
 	void Cmd_TokenizeString(const char* text)
 	{
-		if (game::environment::is_sp())
-		{
-			sp::Cmd_TokenizeString(text);
-		}
-		else
-		{
-			const auto a2 = 512 - *reinterpret_cast<int*>(0x3516F40_b);
-			mp::Cmd_TokenizeStringWithLimit(text, a2);
-		}
+		const auto a2 = 512 - *reinterpret_cast<int*>(0x3516F40_b);
+		Cmd_TokenizeStringWithLimit(text, a2);
 	}
 
 	void Cmd_EndTokenizeString()
 	{
-		if (game::environment::is_sp())
-		{
-			return sp::Cmd_EndTokenizeString();
-		}
-
 		const auto nesting = cmd_args->nesting;
 		const auto argc = cmd_args->argc[nesting];
 		--cmd_args->nesting;
@@ -87,21 +63,15 @@ namespace game
 		cmd_argsPrivate->totalUsedTextPool -= cmd_argsPrivate->usedTextPool[nesting];
 	}
 
+	connstate_t CL_GetLocalClientConnectionState(const int localClientNum)
+	{
+		// cant find actual way to reference :/
+		return static_cast<connstate_t>(*(keyCatchers + 1));
+	}
+
 	namespace environment
 	{
 		launcher::mode mode = launcher::mode::none;
-
-		launcher::mode translate_surrogate(const launcher::mode _mode)
-		{
-			switch (_mode)
-			{
-			case launcher::mode::survival:
-			case launcher::mode::zombies:
-				return launcher::mode::multiplayer;
-			default:
-				return _mode;
-			}
-		}
 
 		launcher::mode get_real_mode()
 		{
@@ -115,12 +85,7 @@ namespace game
 
 		launcher::mode get_mode()
 		{
-			return translate_surrogate(get_real_mode());
-		}
-
-		bool is_sp()
-		{
-			return get_mode() == launcher::mode::singleplayer;
+			return get_real_mode();
 		}
 
 		bool is_mp()
@@ -148,9 +113,6 @@ namespace game
 
 			case launcher::mode::multiplayer:
 				return "Multiplayer";
-
-			case launcher::mode::singleplayer:
-				return "Singleplayer";
 
 			case launcher::mode::none:
 				return "None";

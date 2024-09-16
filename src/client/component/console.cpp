@@ -357,7 +357,7 @@ namespace console
 			printf_hook.create(printf, printf_stub);
 
 			ShowWindow(GetConsoleWindow(), SW_SHOW);
-			SetConsoleTitle("H1-Mod: " VERSION);
+			SetConsoleTitle("H2M-Mod: " VERSION);
 
 			con.kill_event = CreateEvent(NULL, TRUE, FALSE, NULL);
 

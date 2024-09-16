@@ -124,9 +124,8 @@ namespace exception
 				++recovery_data.recovery_counts;
 
 				game::Com_Error(game::ERR_DROP, "Fatal error (0x%08X) at 0x%p.\nA minidump has been written.\n\n"
-				                "H1-Mod has tried to recover your game, but it might not run stable anymore.\n\n"
-				                "Make sure to update your graphics card drivers and install operating system updates!\n"
-				                "Closing or restarting Steam might also help.",
+				                "h2m-mod has tried to recover your game, but it might not run stable anymore.\n\n"
+				                "Make sure to update your graphics card drivers and install operating system updates!\n",
 				                exception_data.code, exception_data.address);
 			}
 			else
@@ -168,7 +167,7 @@ namespace exception
 				info.append("\r\n");
 			};
 
-			line("H1-Mod Crash Dump");
+			line("h2m-mod Crash Dump");
 			line("");
 			line("Version: "s + VERSION);
 			line("Environment: "s + game::environment::get_string());
@@ -193,14 +192,14 @@ namespace exception
 
 		void write_minidump(const LPEXCEPTION_POINTERS exceptioninfo)
 		{
-			const std::string crash_name = utils::string::va("minidumps/h1-mod-crash-%d-%s.zip",
+			const std::string crash_name = utils::string::va("minidumps/h2m-mod-crash-%d-%s.zip",
 			                                                 game::environment::get_real_mode(),
 			                                                 get_timestamp().data());
 
 			utils::compression::zip::archive zip_file{};
 			zip_file.add("crash.dmp", create_minidump(exceptioninfo));
 			zip_file.add("info.txt", generate_crash_info(exceptioninfo));
-			zip_file.write(crash_name, "H1-Mod Crash Dump");
+			zip_file.write(crash_name, "h2m-mod Crash Dump");
 		}
 
 		bool is_harmless_error(const LPEXCEPTION_POINTERS exceptioninfo)
@@ -254,7 +253,7 @@ namespace exception
 		void post_unpack() override
 		{
 			dvars::cg_legacyCrashHandling = dvars::register_bool("cg_legacyCrashHandling", 
-				false, game::DVAR_FLAG_SAVED, "Toggle new crash handling");
+				false, game::DVAR_FLAG_SAVED, "Toggle better crash handling");
 		}
 	};
 }

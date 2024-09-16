@@ -17,7 +17,7 @@ namespace security
 			}
 		}
 
-		void remap_cached_entities(game::mp::cachedSnapshot_t& snapshot)
+		void remap_cached_entities(game::cachedSnapshot_t& snapshot)
 		{
 			static bool printed = false;
 			if (snapshot.num_clients > 1200 && !printed)
@@ -46,11 +46,6 @@ namespace security
 	public:
 		void post_unpack() override
 		{
-			if (game::environment::is_sp())
-			{
-				return;
-			}
-
 			// Patch vulnerability in PlayerCards_SetCachedPlayerData
 			utils::hook::call(0xF4632_b, set_cached_playerdata_stub);
 

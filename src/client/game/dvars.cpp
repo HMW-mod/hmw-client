@@ -270,6 +270,14 @@ namespace dvars
 		return game::Dvar_RegisterFloatHashed(hash, "", value, min, max, flags);
 	}
 
+	game::dvar_t* register_vec3(const std::string& name, float x, float y, float z,
+		float min, float max, unsigned int flags, const std::string& description)
+	{
+		const auto hash = generate_hash(name);
+		insert_dvar_info(hash, name, description);
+		return game::Dvar_RegisterVec3(hash, "", x, y, z, min, max, flags);
+	}
+
 	game::dvar_t* register_vec4(const std::string& name, float x, float y, float z,
 		float w, float min, float max, unsigned int flags, const std::string& description)
 	{

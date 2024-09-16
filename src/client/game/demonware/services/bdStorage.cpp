@@ -4,10 +4,8 @@
 #include <utils/nt.hpp>
 #include <utils/io.hpp>
 #include <utils/cryptography.hpp>
-
+#include "utils/obfus.hpp"
 #include "game/game.hpp"
-
-#include "../../../component/mods.hpp"
 
 namespace demonware
 {
@@ -138,6 +136,23 @@ namespace demonware
 		}
 	}
 
+	std::string pad(const std::string& data)
+	{
+		size_t blockSize = 8;
+		size_t paddingSize = blockSize - (data.size() % blockSize);
+		std::string paddedData = data;
+		paddedData.append(paddingSize, static_cast<char>(paddingSize));
+		return paddedData;
+	}
+
+	std::string unpad(const std::string& data) 
+	{
+		if (data.empty()) return data;
+		size_t paddingSize = static_cast<size_t>(data.back());
+		if (paddingSize > 8) return data; // Invalid padding size
+		return data.substr(0, data.size() - paddingSize);
+	}
+
 	void bdStorage::set_user_file(service_server* server, byte_buffer* buffer) const
 	{
 		bool priv;
@@ -170,6 +185,7 @@ namespace demonware
 
 	std::string bdStorage::get_user_file_path(const std::string& name)
 	{
+		//printf("Fetching User File: %s\n", name.c_str());
 		const auto regular_path = "players2/user/";
 		if (storage_path.empty())
 		{
@@ -190,8 +206,8 @@ namespace demonware
 				}
 			};
 
-			copy_file("commondata");
-			copy_file("mpdata");
+			copy_file("h2mcdta");
+			copy_file("h2mdta");
 		}
 
 		return custom_path + name;

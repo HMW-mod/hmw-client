@@ -59,7 +59,7 @@ namespace game_console
 		std::vector<dvars::dvar_info> matches{};
 
 		float color_white[4] = {1.0f, 1.0f, 1.0f, 1.0f};
-		float color_title[4] = {0.3f, 0.7f, 0.3f, 1.0f};
+		float color_title[4] = {1.0f, 0.89f, 0.43f, 1.0f};
 
 		void clear()
 		{
@@ -230,7 +230,12 @@ namespace game_console
 			con.globals.left_x = con.screen_min[0] + 6.0f;
 
 			draw_input_box(1, dvars::con_inputBoxColor->current.vector);
-			draw_input_text_and_over("H1-Mod: " VERSION ">", color_title);
+
+#ifdef DEBUG
+			draw_input_text_and_over("h2m-mod: " VERSION ">", color_title);
+#else
+			draw_input_text_and_over("h2m-mod: >", color_title); // does this look good? idk
+#endif
 
 			con.globals.left_x = con.globals.x;
 			con.globals.auto_complete_choice[0] = 0;
@@ -280,7 +285,7 @@ namespace game_console
 			else if (matches.size() == 1)
 			{
 				auto* const dvar = game::Dvar_FindVar(matches[0].name.data());
-				const auto line_count = dvar ? 3 : 1;
+				const auto line_count = dvar ? 2 : 1;
 
 				const auto height = draw_hint_box(line_count, dvars::con_inputHintBoxColor->current.vector);
 				draw_hint_text(0, matches[0].name.data(), dvar
@@ -296,16 +301,15 @@ namespace game_console
 					draw_hint_text(1, "  default", dvars::con_inputDvarInactiveValueColor->current.vector);
 					draw_hint_text(1, game::Dvar_ValueToString(dvar, true, dvar->reset),
 						dvars::con_inputDvarInactiveValueColor->current.vector, offset);
-					draw_hint_text(2, matches[0].description.data(),
-						color_white, 0);
 
-					const auto offset_y = height + 3.f;
+					const auto offset_y = height + 2.f; // was 3
 					const auto line_count_ = dvar->type == game::dvar_type::enumeration
 						? dvar->domain.enumeration.stringCount + 1
-						: 1;
+						: 2;
 
 					draw_hint_box(line_count_, dvars::con_inputHintBoxColor->current.vector, 0, offset_y);
-					draw_hint_text(0, dvars::dvar_get_domain(dvar->type, dvar->domain).data(),
+					draw_hint_text(0, matches[0].description.data(), color_white, 0, offset_y);
+					draw_hint_text(1, dvars::dvar_get_domain(dvar->type, dvar->domain).data(),
 						dvars::con_inputCmdMatchColor->current.vector, 0, offset_y);
 				}
 
@@ -395,9 +399,6 @@ namespace game_console
 				const auto y = (con.screen_min[1] + 32.0f) + 6.0f;
 				const auto width = (con.screen_max[0] - con.screen_min[0]) - 12.0f;
 				const auto height = ((con.screen_max[1] - con.screen_min[1]) - 32.0f) - 12.0f;
-
-				game::R_AddCmdDrawText("H1-Mod 1.15", 0x7FFFFFFF, console_font, x,
-					((height - 16.0f) + y) + console_font->pixelHeight, 1.0f, 1.0f, 0.0f, color_title, 0);
 
 				draw_output_scrollbar(x, y, width, height, output);
 				draw_output_text(x, y, output);
@@ -778,35 +779,41 @@ namespace game_console
 				history.clear();
 			});
 
+#ifdef DEBUG
+			const auto console_flag = game::DVAR_FLAG_NONE;
+#else
+			const auto console_flag = game::DVAR_FLAG_READ;
+#endif
+
 			// add our dvars
-			dvars::con_inputBoxColor = dvars::register_vec4("con_inputBoxColor", 0.2f, 0.2f, 0.2f, 0.9f, 0.0f, 1.0f,
-				game::DVAR_FLAG_SAVED,
+			dvars::con_inputBoxColor = dvars::register_vec4("con_inputBoxColor", 0.0f, 0.0f, 0.0f, 0.7f, 0.0f, 1.0f,
+				console_flag,
 				"color of console input box");
-			dvars::con_inputHintBoxColor = dvars::register_vec4("con_inputHintBoxColor", 0.3f, 0.3f, 0.3f, 1.0f,
+			dvars::con_inputHintBoxColor = dvars::register_vec4("con_inputHintBoxColor", 0.0f, 0.0f, 0.0f, 0.7f,
 				0.0f, 1.0f,
-				game::DVAR_FLAG_SAVED, "color of console input hint box");
+				console_flag, "color of console input hint box");
 			dvars::con_outputBarColor = dvars::register_vec4("con_outputBarColor", 0.5f, 0.5f, 0.5f, 0.6f, 0.0f,
-				1.0f, game::DVAR_FLAG_SAVED,
+				1.0f, console_flag,
 				"color of console output bar");
-			dvars::con_outputSliderColor = dvars::register_vec4("con_outputSliderColor", 0.3f, 0.7f, 0.3f, 1.0f,
+			dvars::con_outputSliderColor = dvars::register_vec4("con_outputSliderColor", 1.0f, 0.89f, 0.43f, 1.0f,
 				0.0f, 1.0f,
-				game::DVAR_FLAG_SAVED, "color of console output slider");
-			dvars::con_outputWindowColor = dvars::register_vec4("con_outputWindowColor", 0.25f, 0.25f, 0.25f, 0.85f,
+				console_flag, "color of console output slider");
+			dvars::con_outputWindowColor = dvars::register_vec4("con_outputWindowColor", 0.0f, 0.0f, 0.0f, 0.5f,
 				0.0f,
-				1.0f, game::DVAR_FLAG_SAVED, "color of console output window");
+				1.0f, console_flag, "color of console output window");
 			dvars::con_inputDvarMatchColor = dvars::register_vec4("con_inputDvarMatchColor", 1.0f, 1.0f, 0.8f, 1.0f,
 				0.0f,
-				1.0f, game::DVAR_FLAG_SAVED, "color of console matched dvar");
-			dvars::con_inputDvarValueColor = dvars::register_vec4("con_inputDvarValueColor", 1.0f, 1.0f, 0.8f, 1.0f,
+				1.0f, console_flag, "color of console matched dvar");
+			dvars::con_inputDvarValueColor = dvars::register_vec4("con_inputDvarValueColor", 1.0f, 1.0f, 1.0f, 1.0f,
 				0.0f,
-				1.0f, game::DVAR_FLAG_SAVED, "color of console matched dvar value");
+				1.0f, console_flag, "color of console matched dvar value");
 			dvars::con_inputDvarInactiveValueColor = dvars::register_vec4(
 				"con_inputDvarInactiveValueColor", 0.8f, 0.8f,
-				0.8f, 1.0f, 0.0f, 1.0f, game::DVAR_FLAG_SAVED,
+				0.8f, 1.0f, 0.0f, 1.0f, console_flag,
 				"color of console inactive dvar value");
 			dvars::con_inputCmdMatchColor = dvars::register_vec4("con_inputCmdMatchColor", 0.80f, 0.80f, 1.0f, 1.0f,
 				0.0f,
-				1.0f, game::DVAR_FLAG_SAVED, "color of console matched command");
+				1.0f, console_flag, "color of console matched command");
 		}
 	};
 }

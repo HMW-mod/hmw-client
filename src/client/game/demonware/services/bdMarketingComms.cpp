@@ -19,8 +19,7 @@ namespace demonware
 	{
 		auto reply = server->create_reply(this->task_id());
 
-		int message_id = 1;
-		const auto featured_content = motd::get_featured_content();
+		/*const auto featured_content = motd::get_featured_content();
 		for (const auto& [key, value] : featured_content)
 		{
 			const auto marketing_message = new bdMarketingMessage;
@@ -30,7 +29,7 @@ namespace demonware
 			marketing_message->m_metadata = "{}";
 			reply->add(marketing_message);
 			++message_id;
-		}
+		}*/
 
 		reply->send();
 	}

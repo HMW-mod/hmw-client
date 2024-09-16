@@ -120,12 +120,12 @@ namespace scheduler
 
 		void hks_frame_stub()
 		{
-			const auto state = *game::hks::lua_state;
-			if (state)
+			hks_frame_hook.invoke<void>();
+
+			if (*game::hks::lua_state)
 			{
 				execute(pipeline::lui);
 			}
-			hks_frame_hook.invoke<bool>();
 		}
 	}
 
@@ -167,7 +167,7 @@ namespace scheduler
 	{
 		schedule([=]()
 		{
-			const auto dw_init = game::environment::is_sp() ? true : game::Live_SyncOnlineDataFlags(0) == 0;
+			const auto dw_init = game::Live_SyncOnlineDataFlags(0) == 0;
 			if (dw_init && game::Sys_IsDatabaseReady2())
 			{
 				once(callback, type, delay);
@@ -195,22 +195,22 @@ namespace scheduler
 
 		void post_unpack() override
 		{
-			utils::hook::jump(SELECT_VALUE(0x581FB0_b, 0x6A6300_b), utils::hook::assemble([](utils::hook::assembler& a)
+			utils::hook::jump(0x6A6300_b, utils::hook::assemble([](utils::hook::assembler& a)
 			{
 				a.pushad64();
 				a.call_aligned(r_end_frame_stub);
 				a.popad64();
 
 				a.sub(rsp, 0x28);
-				a.call(SELECT_VALUE(0x581840_b, 0x6A5C20_b));
-				a.mov(rax, SELECT_VALUE(0x1182A680_b, 0xEAB4308_b));
+				a.call(0x6A5C20_b);
+				a.mov(rax, 0xEAB4308_b);
 				a.mov(rax, qword_ptr(rax));
-				a.jmp(SELECT_VALUE(0x581FC0_b, 0x6A6310_b));
+				a.jmp(0x6A6310_b);
 			}), true);
 
-			g_run_frame_hook.create(SELECT_VALUE(0x2992E0_b, 0x417940_b), scheduler::server_frame_stub);
-			main_frame_hook.create(SELECT_VALUE(0x1B1DF0_b, 0x3438B0_b), scheduler::main_frame_stub);
-			hks_frame_hook.create(SELECT_VALUE(0x1028D0_b, 0x2792E0_b), scheduler::hks_frame_stub);
+			g_run_frame_hook.create(0x417940_b, scheduler::server_frame_stub);
+			main_frame_hook.create(0x3438B0_b, scheduler::main_frame_stub);
+			hks_frame_hook.create(0x2792E0_b, scheduler::hks_frame_stub);
 		}
 
 		void pre_destroy() override

@@ -14,7 +14,11 @@ namespace splash
 		void post_start() override
 		{
 			const utils::nt::library self;
+#ifdef DEBUG
+			image_ = LoadImageA(self, MAKEINTRESOURCE(IMAGE_SPLASH_DEBUG), IMAGE_BITMAP, 0, 0, LR_DEFAULTCOLOR);
+#else
 			image_ = LoadImageA(self, MAKEINTRESOURCE(IMAGE_SPLASH), IMAGE_BITMAP, 0, 0, LR_DEFAULTCOLOR);
+#endif
 		}
 
 		void post_load() override
@@ -30,9 +34,9 @@ namespace splash
 		void post_unpack() override
 		{
 			// Disable native splash screen
-			utils::hook::set<uint8_t>(SELECT_VALUE(0x462B90_b, 0x5BDF20_b), 0xC3);
-			utils::hook::jump(SELECT_VALUE(0x462E40_b, 0x5BE1D0_b), destroy_stub, true);
-			utils::hook::jump(SELECT_VALUE(0x462E80_b, 0x5BE210_b), destroy_stub, true);
+			utils::hook::set<uint8_t>(0x5BDF20_b, 0xC3);
+			utils::hook::jump(0x5BE1D0_b, destroy_stub, true);
+			utils::hook::jump(0x5BE210_b, destroy_stub, true);
 		}
 
 		void pre_destroy() override
@@ -71,7 +75,7 @@ namespace splash
 			{
 				ShowWindow(this->window_, SW_HIDE);
 				DestroyWindow(this->window_);
-				UnregisterClassA("H1 Splash Screen", utils::nt::library{});
+				UnregisterClassA("H2M Splash Screen", utils::nt::library{});
 			}
 		}
 
@@ -90,7 +94,7 @@ namespace splash
 			wnd_class.hIcon = LoadIconA(self, reinterpret_cast<LPCSTR>(102));
 			wnd_class.hCursor = LoadCursorA(nullptr, IDC_APPSTARTING);
 			wnd_class.hbrBackground = reinterpret_cast<HBRUSH>(6);
-			wnd_class.lpszClassName = "H1 Splash Screen";
+			wnd_class.lpszClassName = "H2M Splash Screen";
 
 			if (RegisterClassA(&wnd_class))
 			{
@@ -99,7 +103,7 @@ namespace splash
 
 				if (image_)
 				{
-					this->window_ = CreateWindowExA(WS_EX_APPWINDOW, "H1 Splash Screen", "H1",
+					this->window_ = CreateWindowExA(WS_EX_APPWINDOW, "H2M Splash Screen", "H2M",
 						WS_POPUP | WS_SYSMENU,
 						(x_pixels - 320) / 2, (y_pixels - 100) / 2, 320, 100, nullptr,
 						nullptr,
@@ -127,6 +131,8 @@ namespace splash
 							AdjustWindowRect(&rect, WS_CHILD | WS_VISIBLE | 0xEu, 0);
 							SetWindowPos(this->window_, nullptr, rect.left, rect.top, rect.right - rect.left,
 								rect.bottom - rect.top, SWP_NOZORDER);
+
+							SetWindowRgn(this->window_, CreateRoundRectRgn(0, 0, rect.right - rect.left, rect.bottom - rect.top, 15, 15), TRUE);
 
 							ShowWindow(this->window_, SW_SHOW);
 							UpdateWindow(this->window_);

@@ -44,7 +44,7 @@ namespace steam_proxy
 #ifndef DEV_BUILD
 			try
 			{
-				this->start_mod("\xF0\x9F\x8E\xAE" " H1-Mod: "s + (game::environment::is_sp() ? "Singleplayer" : "Multiplayer"), game::environment::is_sp() ? 393080 : 393100);
+				this->start_mod("\xF0\x9F\x8E\xAE" " H2 Multiplayer"s, 393100);
 			}
 			catch (std::exception& e)
 			{
@@ -147,7 +147,7 @@ namespace steam_proxy
 			game_id.raw.type = 1; // k_EGameIDTypeGameMod
 			game_id.raw.app_id = app_id & 0xFFFFFF;
 
-			const auto* mod_id = "H1-Mod";
+			const auto* mod_id = "h2m-mod";
 			game_id.raw.mod_id = *reinterpret_cast<const unsigned int*>(mod_id) | 0x80000000;
 
 			this->client_user_.invoke<bool>("SpawnProcess", path.data(), cmdline.data(), our_directory,
@@ -190,4 +190,6 @@ namespace steam_proxy
 	}
 }
 
+#ifdef DEBUG
 REGISTER_COMPONENT(steam_proxy::component)
+#endif

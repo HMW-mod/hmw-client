@@ -6,6 +6,7 @@
 #include "component/scheduler.hpp"
 #include "component/scripting.hpp"
 
+#include "command.hpp"
 #include "console.hpp"
 
 #include "game/game.hpp"
@@ -13,7 +14,6 @@
 #include "game/scripting/event.hpp"
 #include "game/scripting/execution.hpp"
 #include "game/scripting/functions.hpp"
-#include "game/scripting/lua/engine.hpp"
 
 #include <utils/hook.hpp>
 
@@ -63,7 +63,7 @@ namespace scripting
 				const auto* string = game::SL_ConvertToString(string_value);
 				if (string)
 				{
-					event e{};
+					event e {};
 					e.name = string;
 					e.entity = notify_list_owner_id;
 
@@ -71,22 +71,10 @@ namespace scripting
 					{
 						e.arguments.emplace_back(*value);
 					}
-
-					lua::engine::notify(e);
 				}
 			}
 
 			vm_notify_hook.invoke<void>(notify_list_owner_id, string_value, top);
-		}
-
-		unsigned int vm_execute_stub()
-		{
-			if (!lua::engine::is_running())
-			{
-				lua::engine::start();
-			}
-
-			return vm_execute_hook.invoke<unsigned int>();
 		}
 
 		void g_load_structs_stub()
@@ -95,8 +83,6 @@ namespace scripting
 			{
 				game::G_LogPrintf("------------------------------------------------------------\n");
 				game::G_LogPrintf("InitGame\n");
-
-				lua::engine::start();
 			}
 
 			gsc::load_main_handles();
@@ -125,8 +111,7 @@ namespace scripting
 				callback(free_scripts, false);
 			}
 
-			scripting::notify(*game::levelEntityId, "shutdownGame_called", {1});
-			lua::engine::stop();
+			scripting::notify(*game::levelEntityId, "shutdownGame_called", { 1 });
 
 			game::G_LogPrintf("ShutdownGame:\n");
 			game::G_LogPrintf("------------------------------------------------------------\n");
@@ -154,7 +139,7 @@ namespace scripting
 		void process_script_stub(const char* filename)
 		{
 			current_script_file_name = filename;
-			
+
 			const auto file_id = atoi(filename);
 			if (file_id)
 			{
@@ -186,14 +171,14 @@ namespace scripting
 
 			const auto name = scripting::get_token(id);
 			auto& itr = script_function_table_sort[filename];
-			itr.insert(itr.end() - 1, {name, pos});
+			itr.insert(itr.end() - 1, { name, pos });
 		}
 
 		void add_function(const std::string& file, unsigned int id, const char* pos)
 		{
 			const auto name = get_token(id);
 			script_function_table[file][name] = pos;
-			script_function_table_rev[pos] = {file, name};
+			script_function_table_rev[pos] = { file, name };
 		}
 
 		void scr_set_thread_position_stub(unsigned int thread_name, const char* code_pos)
@@ -210,17 +195,6 @@ namespace scripting
 			const auto result = sl_get_canonical_string_hook.invoke<unsigned int>(str);
 			canonical_string_table[result] = str;
 			return result;
-		}
-
-		void* get_spawn_point_stub()
-		{
-			const auto spawn_point = utils::hook::invoke<void*>(0x28BD50_b);
-			if (spawn_point == nullptr)
-			{
-				console::warn("No spawnpoint found for this map, using (0, 0, 0)\n");
-				return &game::sp::g_entities[0];
-			}
-			return spawn_point;
 		}
 	}
 
@@ -246,7 +220,7 @@ namespace scripting
 			return {};
 		}
 
-		return {canonical_string_table[id]};
+		return { canonical_string_table[id] };
 	}
 
 	class component final : public component_interface
@@ -254,34 +228,40 @@ namespace scripting
 	public:
 		void post_unpack() override
 		{
-			vm_notify_hook.create(SELECT_VALUE(0x3CD500_b, 0x514560_b), vm_notify_stub);
+			vm_notify_hook.create(0x514560_b, vm_notify_stub);
 
-			scr_add_class_field_hook.create(SELECT_VALUE(0x3C3CE0_b, 0x50AE20_b), scr_add_class_field_stub);
+			scr_add_class_field_hook.create(0x50AE20_b, scr_add_class_field_stub);
 
-			scr_set_thread_position_hook.create(SELECT_VALUE(0x3BD890_b, 0x504870_b), scr_set_thread_position_stub);
-			process_script_hook.create(SELECT_VALUE(0x3C7200_b, 0x50E340_b), process_script_stub);
+			scr_set_thread_position_hook.create(0x504870_b, scr_set_thread_position_stub);
+			process_script_hook.create(0x50E340_b, process_script_stub);
 			sl_get_canonical_string_hook.create(game::SL_GetCanonicalString, sl_get_canonical_string_stub);
 
-			g_load_structs_hook.create(SELECT_VALUE(0x2E7970_b, 0x458520_b), g_load_structs_stub);
-			scr_load_level_hook.create(SELECT_VALUE(0x2D4CD0_b, 0x450FC0_b), scr_load_level_stub);
-			if (game::environment::is_sp())
-			{
-				vm_execute_hook.create(0x3CA080_b, vm_execute_stub);
-			}
+			g_load_structs_hook.create(0x458520_b, g_load_structs_stub);
+			scr_load_level_hook.create(0x450FC0_b, scr_load_level_stub);
 
-			g_shutdown_game_hook.create(SELECT_VALUE(0x2A5130_b, 0x422F30_b), g_shutdown_game_stub);
+			g_shutdown_game_hook.create(0x422F30_b, g_shutdown_game_stub);
 
-			if (game::environment::is_sp())
+#ifdef DEBUG
+			scheduler::once([]()
 			{
-				utils::hook::call(0x28AE82_b, get_spawn_point_stub);
-			}
+				command::add("vl_command", [](const command::params& params)
+					{
+						if (params.size() < 3)
+						{
+							console::info("usage: vl_command <command> <args>\n");
+							return;
+						}
 
-			scheduler::loop([]
-			{
-				lua::engine::run_frame();
-			}, scheduler::pipeline::server);
-		}
+						const scripting::array params_arr{};
+						for (int i = 1; i < params.size(); ++i)
+						{
+							params_arr.push(params[i]);
+						}
+						scripting::notify(*game::levelEntityId, "vl_command", { params_arr });
+					});
+			}, scheduler::main);
+#endif
+		};
 	};
 }
-
 REGISTER_COMPONENT(scripting::component)

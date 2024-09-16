@@ -11,15 +11,35 @@
 
 #include <utils/hook.hpp>
 #include <utils/string.hpp>
+#include <utils/http.hpp>
+
+#include "tcp/hmw_tcp_utils.hpp"
 
 namespace dedicated
 {
 	namespace
 	{
+		int get_dvar_int(const std::string& dvar)
+		{
+			auto* dvar_value = game::Dvar_FindVar(dvar.data());
+			if (dvar_value && dvar_value->current.integer)
+			{
+				return dvar_value->current.integer;
+			}
+
+			return -1;
+		}
+
 		utils::hook::detour gscr_set_dynamic_dvar_hook;
 		utils::hook::detour com_quit_f_hook;
 
 		const game::dvar_t* sv_lanOnly;
+
+
+		inline bool sv_is_lanOnly()
+		{
+			return (sv_lanOnly && sv_lanOnly->current.enabled);
+		}
 
 		void init_dedicated_server()
 		{
@@ -33,17 +53,12 @@ namespace dedicated
 
 		void send_heartbeat()
 		{
-			if (sv_lanOnly->current.enabled)
+			if (sv_is_lanOnly())
 			{
 				return;
 			}
 
-			game::netadr_s target{};
-			if (server_list::get_master_server(target))
-			{
-				console::info("Sending heartbeat");
-				network::send(target, "heartbeat", "H1");
-			}
+			hmw_tcp_utils::MasterServer::send_heartbeat();
 		}
 
 		std::vector<std::string>& get_startup_command_queue()
@@ -106,15 +121,19 @@ namespace dedicated
 
 		void sync_gpu_stub()
 		{
-			std::this_thread::sleep_for(1ms);
+			const auto frame_time = *game::com_frameTime;
+			const auto sys_msec = game::Sys_Milliseconds();
+			const auto msec = frame_time - sys_msec;
+
+			std::this_thread::sleep_for(std::chrono::milliseconds(msec));
 		}
 
 		void kill_server()
 		{
-			const auto* svs_clients = *game::mp::svs_clients;
+			const auto* svs_clients = *game::svs_clients;
 			if (svs_clients != nullptr)
 			{
-				for (auto i = 0; i < *game::mp::svs_numclients; ++i)
+				for (auto i = 0; i < *game::svs_numclients; ++i)
 				{
 					if (svs_clients[i].header.state >= 3)
 					{
@@ -186,21 +205,16 @@ namespace dedicated
 				return;
 			}
 
-#ifdef DEBUG
 			printf("Starting dedicated server\n");
-#endif
 
 			// Register dedicated dvar
-			dvars::register_bool("dedicated", true, game::DVAR_FLAG_READ, "Dedicated server");
+			dvars::register_bool("dedicated", true, game::DVAR_FLAG_READ, "Dedicated server");		
 
 			// Add lanonly mode
 			sv_lanOnly = dvars::register_bool("sv_lanOnly", false, game::DVAR_FLAG_NONE, "Don't send heartbeat");
 
 			// Disable VirtualLobby
 			dvars::override::register_bool("virtualLobbyEnabled", false, game::DVAR_FLAG_READ);
-
-			// Disable r_preloadShaders
-			dvars::override::register_bool("r_preloadShaders", false, game::DVAR_FLAG_READ);
 
 			// Stop crashing from sys_errors
 			utils::hook::jump(0x1D8710_b, sys_error_stub, true);
@@ -290,9 +304,9 @@ namespace dedicated
 			utils::hook::set<uint8_t>(0x4F7C10_b, 0xC3); // render synchronization lock
 			utils::hook::set<uint8_t>(0x4F7B40_b, 0xC3); // render synchronization unlock
 
-			utils::hook::set<uint8_t>(0x27AA9D_b, 0xEB); // LUI: Unable to start the LUI system due to errors in main.lua
-			utils::hook::set<uint8_t>(0x27AAC5_b, 0xEB); // LUI: Unable to start the LUI system due to errors in depot.lua
-			utils::hook::set<uint8_t>(0x27AADC_b, 0xEB); // ^
+			//utils::hook::set<uint8_t>(0x27AA9D_b, 0xEB); // LUI: Unable to start the LUI system due to errors in main.lua
+			//utils::hook::set<uint8_t>(0x27AAC5_b, 0xEB); // LUI: Unable to start the LUI system due to errors in depot.lua
+			//utils::hook::set<uint8_t>(0x27AADC_b, 0xEB); // ^
 
 			utils::hook::nop(0x5B25BE_b, 5); // Disable sound pak file loading
 			utils::hook::nop(0x5B25C6_b, 2); // ^
@@ -324,6 +338,11 @@ namespace dedicated
 				return scheduler::cond_continue;
 			}, scheduler::pipeline::main, 1s);
 
+			scheduler::once([]()
+			{
+				dvars::register_string("sv_serverkey", "", game::DVAR_FLAG_NONE, "Server key to authenticate to server list");
+			}, scheduler::pipeline::main);
+
 			scheduler::on_game_initialized([]
 			{
 				initialize();
@@ -338,14 +357,23 @@ namespace dedicated
 				execute_startup_command_queue();
 				execute_console_command_queue();
 
+				bool dedicated = game::environment::is_dedi();
+				std::cout << "Dedicated: " << std::to_string(dedicated) << std::endl;
+
+				if (dedicated) {
+					std::string port = utils::string::va("%i", get_dvar_int("net_port"));
+					const std::string url = "http://0.0.0.0:" + port;
+					hmw_tcp_utils::GameServer::start_server(url.c_str());
+				}
+
 				// Send heartbeat to master
 				scheduler::once(send_heartbeat, scheduler::pipeline::server);
-				scheduler::loop(send_heartbeat, scheduler::pipeline::server, 10min);
+				scheduler::loop(send_heartbeat, scheduler::pipeline::server, 2min);
 				command::add("heartbeat", send_heartbeat);
 			}, scheduler::pipeline::main, 1s);
 
 			command::add("killserver", kill_server);
-			com_quit_f_hook.create(0x17CD00_b, &kill_server);
+			com_quit_f_hook.create(0x17CD00_b, kill_server);
 		}
 	};
 }

@@ -174,36 +174,72 @@ namespace gsc
 			}
 		}
 
+		std::uint32_t get_opcode_size(const std::uint8_t opcode)
+		{
+			try
+			{
+				const auto index = gsc_ctx->opcode_enum(opcode);
+				return gsc_ctx->opcode_size(index);
+			}
+			catch (...)
+			{
+				return 0;
+			}
+		}
+
 		void print_callstack()
 		{
 			for (auto frame = game::scr_VmPub->function_frame; frame != game::scr_VmPub->function_frame_start; --frame)
 			{
-				const auto pos = frame == game::scr_VmPub->function_frame ? game::scr_function_stack->pos : frame->fs.pos;
-				const auto function = find_function(frame->fs.pos);
+				const auto pos = frame == game::scr_VmPub->function_frame ? game::scr_function_stack->pos - 1 : frame->fs.pos;
+				const auto function = find_function(pos);
 
-				if (function.has_value())
+				if (!function.has_value())
 				{
-					console::warn("\tat function \"%s\" in file \"%s.gsc\"\n", function.value().first.data(), function.value().second.data());
+					console::warn("\tat unknown location %p\n", pos);
+					continue;
+				}
+
+				auto& file_name = function->file;
+				const auto devmap_opt = get_script_devmap(file_name);
+
+				const auto function_name = function->function;
+
+				if (devmap_opt.has_value())
+				{
+					const auto& devmap = devmap_opt.value();
+					const auto rel_pos = static_cast<std::uint32_t>(pos - function->script_start);
+					const auto& iter = devmap->find(rel_pos);
+
+					if (iter != devmap->end())
+					{
+						console::warn("\tat function \"%s\" in file \"%s.gsc\" (line %d:%d)\n",
+							function_name.data(), file_name.data(),
+							iter->second.line, iter->second.column);
+					}
+					else
+					{
+						console::warn("\tat function \"%s\" in file \"%s.gsc\"\n", function_name.data(), file_name.data());
+					}
 				}
 				else
 				{
-					console::warn("\tat unknown location %p\n", pos);
+					console::warn("\tat function \"%s\" in file \"%s.gsc\"\n", function_name.data(), file_name.data());
 				}
 			}
 		}
 
-		void vm_error_stub(int mark_pos)
+		void vm_error_internal()
 		{
 			const bool dev_script = developer_script ? developer_script->current.enabled : false;
 			if (!dev_script && !force_error_print)
 			{
-				utils::hook::invoke<void>(SELECT_VALUE(0x415C90_b, 0x59DDA0_b), mark_pos);
 				return;
 			}
 
 			console::warn("*********** script runtime error *************\n");
 
-			const auto opcode_id = *reinterpret_cast<std::uint8_t*>(SELECT_VALUE(0xC4015E8_b, 0xB7B8968_b));
+			const auto opcode_id = *reinterpret_cast<std::uint8_t*>(0xB7B8968_b);
 			const std::string error_str = gsc_error_msg.has_value()
 				? utils::string::va(": %s", gsc_error_msg.value().data())
 				: "";
@@ -230,7 +266,20 @@ namespace gsc
 
 			print_callstack();
 			console::warn("**********************************************\n");
-			utils::hook::invoke<void*>(SELECT_VALUE(0x415C90_b, 0x59DDA0_b), mark_pos);
+		}
+
+		void vm_error_stub(__int64 mark_pos)
+		{
+			try
+			{
+				vm_error_internal();
+			}
+			catch (xsk::gsc::error& err)
+			{
+				console::error("vm_error: %s\n", err.what());
+			}
+
+			utils::hook::invoke<void>(0x59DDA0_b, mark_pos);
 		}
 
 		void print(const function_args& args)
@@ -243,7 +292,10 @@ namespace gsc
 				buffer.append(str);
 				buffer.append("\t");
 			}
+
+//#ifdef DEBUG
 			console::info("%s\n", buffer.data());
+//#endif
 		}
 
 		scripting::script_value typeof(const function_args& args)
@@ -326,33 +378,37 @@ namespace gsc
 	public:
 		void post_unpack() override
 		{
-			developer_script = dvars::register_bool("developer_script", false, 0, "Enable developer script comments");
+#ifdef DEBUG
+			developer_script = dvars::register_bool("developer_script", false, game::DVAR_FLAG_NONE, "Enable developer script comments");
+#else
+			developer_script = dvars::register_bool("developer_script", false, game::DVAR_FLAG_READ, "");
+#endif
 
-			utils::hook::set<uint32_t>(SELECT_VALUE(0x3BD86C_b, 0x50484C_b), 0x1000); // change builtin func count
+			utils::hook::set<uint32_t>(0x50484C_b, 0x1000); // change builtin func count
 
-			utils::hook::set<uint32_t>(SELECT_VALUE(0x3BD872_b, 0x504852_b) + 4,
+			utils::hook::set<uint32_t>(0x504852_b + 4,
 				static_cast<uint32_t>(reverse_b((&func_table))));
-			utils::hook::set<uint32_t>(SELECT_VALUE(0x3CB718_b, 0x512778_b) + 4,
+			utils::hook::set<uint32_t>(0x512778_b + 4,
 				static_cast<uint32_t>(reverse_b((&func_table))));
-			utils::hook::inject(SELECT_VALUE(0x3BDC28_b, 0x504C58_b) + 3, &func_table);
-			utils::hook::set<uint32_t>(SELECT_VALUE(0x3BDC1E_b, 0x504C4E_b), sizeof(func_table));
+			utils::hook::inject(0x504C58_b + 3, &func_table);
+			utils::hook::set<uint32_t>(0x504C4E_b, sizeof(func_table));
 
-			utils::hook::set<uint32_t>(SELECT_VALUE(0x3BD882_b, 0x504862_b) + 4,
+			utils::hook::set<uint32_t>(0x504862_b + 4,
 				static_cast<uint32_t>(reverse_b((&meth_table))));
-			utils::hook::set<uint32_t>(SELECT_VALUE(0x3CBA3B_b, 0x512A9B_b) + 4,
+			utils::hook::set<uint32_t>(0x512A9B_b + 4,
 				static_cast<uint32_t>(reverse_b(&meth_table)));
-			utils::hook::inject(SELECT_VALUE(0x3BDC36_b, 0x504C66_b) + 3, &meth_table);
-			utils::hook::set<uint32_t>(SELECT_VALUE(0x3BDC3F_b, 0x504C6F_b), sizeof(meth_table));
+			utils::hook::inject(0x504C66_b + 3, &meth_table);
+			utils::hook::set<uint32_t>(0x504C6F_b, sizeof(meth_table));
 
-			utils::hook::nop(SELECT_VALUE(0x3CB723_b, 0x512783_b), 8);
-			utils::hook::call(SELECT_VALUE(0x3CB723_b, 0x512783_b), vm_call_builtin_function_stub);
+			utils::hook::nop(0x512783_b, 8);
+			utils::hook::call(0x512783_b, vm_call_builtin_function_stub);
 
-			utils::hook::call(SELECT_VALUE(0x3CBA12_b, 0x512A72_b), get_entity_id_stub);
-			utils::hook::nop(SELECT_VALUE(0x3CBA46_b, 0x512AA6_b), 6);
-			utils::hook::nop(SELECT_VALUE(0x3CBA4E_b, 0x512AAE_b), 2);
-			utils::hook::call(SELECT_VALUE(0x3CBA46_b, 0x512AA6_b), vm_call_builtin_method_stub);
+			utils::hook::call(0x512A72_b, get_entity_id_stub);
+			utils::hook::nop(0x512AA6_b, 6);
+			utils::hook::nop(0x512AAE_b, 2);
+			utils::hook::call(0x512AA6_b, vm_call_builtin_method_stub);
 
-			utils::hook::call(SELECT_VALUE(0x3CC9F3_b, 0x513A53_b), vm_error_stub); // LargeLocalResetToMark
+			utils::hook::call(0x513A53_b, vm_error_stub); // LargeLocalResetToMark
 
 			if (game::environment::is_dedi())
 			{
@@ -363,31 +419,37 @@ namespace gsc
 				});
 			}
 
-			function::add("print", [](const function_args& args)
+			function::add("print", []([[maybe_unused]] const function_args& args)
 			{
+#ifdef DEBUG
 				print(args);
+#endif
 				return scripting::script_value{};
 			});
 
-			function::add("println", [](const function_args& args)
+			function::add("println", []([[maybe_unused]] const function_args& args)
 			{
+#ifdef DEBUG
 				print(args);
+#endif
 				return scripting::script_value{};
 			});
 
-			function::add("assert", [](const function_args& args)
+			function::add("assert", []([[maybe_unused]] const function_args& args)
 			{
+#ifdef DEBUG
 				const auto expr = args[0].as<int>();
 				if (!expr)
 				{
 					throw std::runtime_error("assert fail");
 				}
-
+#endif
 				return scripting::script_value{};
 			});
 
-			function::add("assertex", [](const function_args& args)
+			function::add("assertex", []([[maybe_unused]] const function_args& args)
 			{
+#ifdef DEBUG
 				const auto expr = args[0].as<int>();
 				if (!expr)
 				{
@@ -395,6 +457,7 @@ namespace gsc
 					throw std::runtime_error(error);
 				}
 
+#endif
 				return scripting::script_value{};
 			});
 
@@ -447,9 +510,12 @@ namespace gsc
 				return scripting::script_value{};
 			});
 
-			function::add("executecommand", [](const function_args& args)
+			function::add("executecommand", []([[maybe_unused]] const function_args& args)
 			{
-				command::execute(args[0].as<std::string>(), false);
+				if (game::environment::is_dedi())
+				{
+					command::execute(args[0].as<std::string>(), false);
+				}
 
 				return scripting::script_value{};
 			});
@@ -457,36 +523,32 @@ namespace gsc
 			function::add("typeof", typeof);
 			function::add("type", typeof);
 
-			if (!game::environment::is_sp())
+			function::add("say", [](const function_args& args)
 			{
-				function::add("say", [](const function_args& args)
+				const auto message = args[0].as<std::string>();
+				game::SV_GameSendServerCommand(-1, game::SV_CMD_CAN_IGNORE, utils::string::va("%c \"%s\"", 84, message.data()));
+				return scripting::script_value{};
+			});
+
+			method::add("tell", [](const game::scr_entref_t ent, const function_args& args)
+			{
+				if (ent.classnum != 0)
 				{
-					const auto message = args[0].as<std::string>();
-					game::SV_GameSendServerCommand(-1, game::SV_CMD_CAN_IGNORE, utils::string::va("%c \"%s\"", 84, message.data()));
+					throw std::runtime_error("Invalid entity");
+				}
 
-					return scripting::script_value{};
-				});
+				const auto client = ent.entnum;
 
-				method::add("tell", [](const game::scr_entref_t ent, const function_args& args)
+				if (game::g_entities[client].client == nullptr)
 				{
-					if (ent.classnum != 0)
-					{
-						throw std::runtime_error("Invalid entity");
-					}
+					throw std::runtime_error("Not a player entity");
+				}
 
-					const auto client = ent.entnum;
+				const auto message = args[0].as<std::string>();
+				game::SV_GameSendServerCommand(client, game::SV_CMD_CAN_IGNORE, utils::string::va("%c \"%s\"", 84, message.data()));
 
-					if (game::mp::g_entities[client].client == nullptr)
-					{
-						throw std::runtime_error("Not a player entity");
-					}
-
-					const auto message = args[0].as<std::string>();
-					game::SV_GameSendServerCommand(client, game::SV_CMD_CAN_IGNORE, utils::string::va("%c \"%s\"", 84, message.data()));
-
-					return scripting::script_value{};
-				});
-			}
+				return scripting::script_value{};
+			});
 		}
 	};
 }

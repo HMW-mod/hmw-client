@@ -262,4 +262,23 @@ namespace demonware
 			buffer->read_blob(&this->m_metadata);
 		}
 	};
+
+	class bdServerValidatedStat final : public bdTaskResult
+	{
+	public:
+		//uint8_t m_type;
+		std::string m_stats;
+
+		void serialize(byte_buffer* buffer) override
+		{
+			//buffer->write_ubyte(this->m_type);
+			buffer->write_blob(this->m_stats);
+		}
+
+		void deserialize(byte_buffer* buffer) override
+		{
+			//buffer->read_ubyte(&this->m_type);
+			buffer->read_blob(&this->m_stats);
+		}
+	};
 }

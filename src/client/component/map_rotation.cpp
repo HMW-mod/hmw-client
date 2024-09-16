@@ -277,10 +277,10 @@ namespace map_rotation
 
 			sv_random_map_rotation = dvars::register_bool("sv_randomMapRotation", false, game::DVAR_FLAG_NONE, "Randomize map rotation");
 
-			command::add("map_rotate", &perform_map_rotation);
+			command::add("map_rotate", perform_map_rotation);
 
 			// Hook GScr_ExitLevel 
-			utils::hook::jump(0xE2670_b, &trigger_map_rotation, true); // not sure if working
+			utils::hook::jump(0xE2670_b, trigger_map_rotation, true); // not sure if working
 		}
 	};
 }

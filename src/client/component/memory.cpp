@@ -88,7 +88,7 @@ namespace memory
 			pmem_init();
 
 			const auto script_mem_size = script_mem_low_size + script_mem_high_size;
-			utils::hook::set<uint32_t>(SELECT_VALUE(0x420252_b, 0x5A5582_b), static_cast<uint32_t>(script_mem_size));
+			utils::hook::set<uint32_t>(0x5A5582_b, static_cast<uint32_t>(script_mem_size));
 		}
 	}
 
@@ -97,8 +97,7 @@ namespace memory
 		int out_of_memory_text_stub(char* dest, int size, const char* fmt, ...)
 		{
 			fmt = "%s (%d)\n\n"
-				"Disable shader caching, lower graphic settings, free up RAM, or update your GPU drivers.\n\n"
-				"If this still occurs, try using the '-memoryfix' parameter to generate the 'players2' folder.";
+				"Disable shader caching, lower graphic settings, free up RAM, or update your GPU drivers.\n\n";
 
 			char buffer[2048];
 
@@ -111,7 +110,7 @@ namespace memory
 				va_end(ap);
 			}
 
-			return utils::hook::invoke<int>(SELECT_VALUE(0x429200_b, 0x5AF0F0_b), dest, size, "%s", buffer);
+			return utils::hook::invoke<int>(0x5AF0F0_b, dest, size, "%s", buffer);
 		}
 	}
 
@@ -121,21 +120,10 @@ namespace memory
 		void post_unpack() override
 		{
 			// patch PMem_Init, so we can use whatever memory size we want
-			utils::hook::call(SELECT_VALUE(0x38639C_b, 0x15C4D6_b), pmem_init_stub);
+			utils::hook::call(0x15C4D6_b, pmem_init_stub);
 
 			// Com_sprintf for "Out of memory. You are probably low on disk space."
-			utils::hook::call(SELECT_VALUE(0x457BC9_b, 0x1D8E09_b), out_of_memory_text_stub);
-
-			// "fix" for rare 'Out of memory error' error
-			// this will *at least* generate the configs for mp/sp, which is the #1 issue
-			if (utils::flags::has_flag("memoryfix"))
-			{
-				utils::hook::jump(SELECT_VALUE(0x5110D0_b, 0x6200C0_b), malloc);
-				utils::hook::jump(SELECT_VALUE(0x510FF0_b, 0x61FFE0_b), _aligned_malloc);
-				utils::hook::jump(SELECT_VALUE(0x511130_b, 0x620120_b), free);
-				utils::hook::jump(SELECT_VALUE(0x511220_b, 0x620210_b), realloc);
-				utils::hook::jump(SELECT_VALUE(0x511050_b, 0x620040_b), _aligned_realloc);
-			}
+			utils::hook::call(0x1D8E09_b, out_of_memory_text_stub);
 		}
 	};
 }

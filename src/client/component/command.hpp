@@ -46,7 +46,9 @@ namespace command
 	void add(const char* name, const std::function<void(const params&)>& callback);
 	void add(const char* name, const std::function<void()>& callback);
 
+#ifdef DEBUG
 	void add_sv(const char* name, std::function<void(int, const params_sv&)> callback);
+#endif
 
 	void execute(std::string command, bool sync = false);
 }

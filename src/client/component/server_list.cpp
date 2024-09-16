@@ -17,28 +17,81 @@
 #include <utils/cryptography.hpp>
 #include <utils/string.hpp>
 #include <utils/hook.hpp>
+#include <utils/io.hpp>
+#include <utils/toast.hpp>
+#include <tcp/hmw_tcp_utils.hpp>
+
+#include <thread>
+#include <limits.h>
 
 namespace server_list
 {
+	namespace tcp {
+		// Paging
+		const int server_limit_per_page = 100;
+		int current_page = 0;
+		bool first_refresh = true;
+
+		// Used for when we're refreshing the server / favourites list
+		bool getting_server_list = false;
+		bool getting_favourites = false;
+
+		// Used for stopping the threads abruptly
+		bool interrupt_server_list = false;
+		bool interrupt_favourites = false;
+
+		struct PageData {
+			int pageIndex = -1;
+			std::vector<server_info> listed_servers;
+
+			void add_server(server_info& info) {
+				if (listed_servers.size() >= server_limit_per_page) {
+					return;
+				}
+
+				listed_servers.emplace_back(info);
+			}
+
+			void clear_servers() {
+				listed_servers.clear();
+			}
+
+			int get_server_count() {
+				return static_cast<int>(listed_servers.size());
+			}
+
+			int get_player_count() {
+				int count = 0;
+				for (server_info& server : listed_servers)
+				{
+					count += server.clients - server.bots;
+				}
+				return count;
+			}
+		};
+
+		std::vector<PageData> pages;
+		
+		std::string notification_message = "";
+
+		bool error_is_displayed = false;
+		std::string error_header = "Error";
+		std::string error_message = "";
+
+		std::string failed_to_join_reason = "";
+	}
+
 	namespace
 	{
-		const int server_limit = 100;
+		const int server_limit = INT_MAX; // Handled in serverlist.lua now
 
-		struct server_info
-		{
-			// gotta add more to this
-			int clients;
-			int max_clients;
-			int bots;
-			int ping;
-			std::string host_name;
-			std::string map_name;
-			std::string game_type;
-			std::string mod_name;
-			game::CodPlayMode play_mode;
-			char in_game;
-			game::netadr_s address;
-			bool is_private;
+		enum sort_types : uint32_t {
+			sort_type_unknown = 0, // Patoke @todo: reverse
+			sort_type_hostname = 1,
+			sort_type_map = 2,
+			sort_type_mode = 3,
+			sort_type_players = 4,
+			sort_type_ping = 5,
 		};
 
 		struct
@@ -53,10 +106,8 @@ namespace server_list
 
 		size_t server_list_page = 0;
 		volatile bool update_server_list = false;
+		int list_sort_type = sort_type_hostname;
 		std::chrono::high_resolution_clock::time_point last_scroll{};
-
-		game::dvar_t* master_server_ip;
-		game::dvar_t* master_server_port;
 
 		size_t get_page_count()
 		{
@@ -69,22 +120,90 @@ namespace server_list
 			return server_list_page * server_limit;
 		}
 
+		bool get_favourites_file(nlohmann::json& out)
+		{
+			std::string data = utils::io::read_file("players2/favourites.json");
+
+			nlohmann::json obj;
+			try
+			{
+				obj = nlohmann::json::parse(data.data());
+			}
+			catch (const nlohmann::json::parse_error& ex)
+			{
+				(void)ex;
+				return false;
+			}
+
+			if (!obj.is_array())
+			{
+				console::error("Favourites storage file is invalid!");
+				return false;
+			}
+
+			out = obj;
+
+			return true;
+		}
+
+		void parse_favourites()
+		{
+			std::lock_guard<std::mutex> _(mutex);
+
+			nlohmann::json obj;
+			if (!get_favourites_file(obj))
+				return;
+
+			for (auto& element : obj) 
+			{
+				if (!element.is_string())
+					continue;
+
+				game::netadr_s address{};
+				game::NET_StringToAdr(element.get<std::string>().data(), &address);
+
+				master_state.queued_servers[address] = 0;
+			}
+		}
+
 		void refresh_server_list()
 		{
 			{
 				std::lock_guard<std::mutex> _(mutex);
 				servers.clear();
+
+				for (tcp::PageData page : tcp::pages) {
+					page.clear_servers();
+				}
+				tcp::pages.clear();
+				tcp::current_page = 0;
+
+
 				master_state.queued_servers.clear();
 				server_list_page = 0;
 			}
 
-			party::reset_server_connection_state();
-
-			if (get_master_server(master_state.address))
+			ui_scripting::notify("updateGameList", {});
+			ui_scripting::notify("updatePageCounter", {});
+			// Use new TCP populate function
+			auto* sort_type = game::Dvar_FindVar("ui_netSource");
+			if (sort_type && sort_type->current.integer == 1)
 			{
-				master_state.requesting = true;
+				// Internet
+				if (server_list::tcp::getting_favourites) {
+					server_list::tcp::interrupt_favourites = true;
+				}
 
-				network::send(master_state.address, "getservers", utils::string::va("H1 %i full empty", PROTOCOL));
+				server_list::tcp::populate_server_list_threaded();
+			}
+			else if (sort_type && sort_type->current.integer == 2)
+			{
+				// Favourites
+				if (server_list::tcp::getting_server_list) {
+					server_list::tcp::interrupt_server_list = true;
+				}
+	
+				server_list::tcp::parse_favourites_tcp_threaded();
 			}
 		}
 
@@ -103,7 +222,16 @@ namespace server_list
 				else
 				{
 					console::info("Connecting to (%d - %zu): %s\n", index, i, servers[i].host_name.data());
-					party::connect(servers[i].address);
+					//servers[i].address.port = htons(servers[i].address.port);
+					
+					bool canJoin = server_list::tcp::check_can_join(servers[i].connect_address);
+					if (canJoin) {
+						//command::execute("connect " + servers[i].connect_address);
+						party::connect(servers[i].address);
+					}
+					else {
+						server_list::tcp::display_error("Failed to join server!", server_list::tcp::failed_to_join_reason);
+					}
 				}
 			}
 		}
@@ -146,7 +274,7 @@ namespace server_list
 				}
 
 				auto map_display_name = game::UI_GetMapDisplayName(map_name.data());
-				if (!fastfiles::exists(map_name, false))
+				if (!fastfiles::usermap_exists(map_name) && !fastfiles::exists(map_name, false))
 				{
 					map_display_name = utils::string::va("^1%s", map_display_name);
 				}
@@ -182,32 +310,11 @@ namespace server_list
 			}
 		}
 
-		void sort_serverlist()
-		{
-			std::stable_sort(servers.begin(), servers.end(), [](const server_info& a, const server_info& b)
-			{
-				const auto a_players = a.clients - a.bots;
-				const auto b_players = b.clients - b.bots;
-
-				if (a_players == b_players)
-				{
-					if (a.clients == b.clients)
-					{
-						return a.ping < b.ping;
-					}
-
-					return a.clients > b.clients;
-				}
-
-				return a_players > b_players;
-			});
-		}
-
 		void insert_server(server_info&& server)
 		{
 			std::lock_guard<std::mutex> _(mutex);
 			servers.emplace_back(std::move(server));
-			sort_serverlist();
+			sort_serverlist(list_sort_type);
 			trigger_refresh();
 		}
 
@@ -296,7 +403,6 @@ namespace server_list
 #ifdef DEBUG
 			console::info("[LUI] %s\n", menuName);
 #endif
-
 			if (!strcmp(menuName, "menu_systemlink_join"))
 			{
 				refresh_server_list();
@@ -304,15 +410,56 @@ namespace server_list
 
 			lui_open_menu_hook.invoke<void>(controllerIndex, menuName, isPopup, isModal, isExclusive);
 		}
+	}
 
-		void check_refresh()
+	void sort_serverlist(int sort_type)
+	{
+		list_sort_type = sort_type;
+
+		std::vector<server_info> to_sort;
+
+		for (auto& page : server_list::tcp::pages) 
 		{
-			if (update_server_list)
+			for (server_info& server : page.listed_servers)
 			{
-				update_server_list = false;
-				ui_scripting::notify("updateGameList", {});
+				to_sort.emplace_back(server);
 			}
 		}
+
+		// @Aphrodite TODO change this to sort pages
+		std::stable_sort(to_sort.begin(), to_sort.end(), [sort_type](const server_info& a, const server_info& b)
+		{
+			switch (sort_type)
+			{
+			case sort_type_unknown:
+				// Patoke @todo: what is this doing and why does it exist?
+				break;
+			case sort_type_hostname:
+				return a.host_name.compare(b.host_name) < 0;
+			case sort_type_map:
+				return a.map_name.compare(b.map_name) < 0;
+			case sort_type_mode:
+				return a.game_type.compare(b.game_type) < 0;
+			case sort_type_players: // sort by most players
+				return (a.clients - a.bots) > (b.clients - b.bots);
+			case sort_type_ping: // sort by smallest ping
+				return a.ping < b.ping; 
+			}
+
+			return true;
+		});
+
+		// Clear pages
+		tcp::pages.clear();
+
+		int server_index = 0;
+		for (server_info& server : to_sort) 
+		{
+			int page_number = tcp::get_page_number(server_index) - 1;
+			tcp::add_server_to_page(page_number, server);
+			server_index++;
+		}
+
 	}
 
 	bool sl_key_event(const int key, const int down)
@@ -333,88 +480,20 @@ namespace server_list
 		return true;
 	}
 
-	bool get_master_server(game::netadr_s& address)
-	{
-		return game::NET_StringToAdr(utils::string::va("%s:%s",
-			master_server_ip->current.string, master_server_port->current.string), &address);
-	}
-
-	void handle_info_response(const game::netadr_s& address, const utils::info_string& info)
-	{
-		// Don't show servers that aren't using the same protocol!
-		const auto protocol = std::atoi(info.get("protocol").data());
-		if (protocol != PROTOCOL)
-		{
-			return;
-		}
-
-		// Don't show servers that aren't dedicated!
-		const auto dedicated = std::atoi(info.get("dedicated").data());
-		if (!dedicated)
-		{
-			return;
-		}
-
-		// Don't show servers that aren't running!
-		const auto sv_running = std::atoi(info.get("sv_running").data());
-		if (!sv_running)
-		{
-			return;
-		}
-
-		// Only handle servers of the same playmode!
-		const auto playmode = game::CodPlayMode(std::atoi(info.get("playmode").data()));
-		if (game::Com_GetCurrentCoDPlayMode() != playmode)
-		{
-			return;
-		}
-
-		if (info.get("gamename") != "H1")
-		{
-			return;
-		}
-
-		int start_time{};
-		const auto now = game::Sys_Milliseconds();
-
-		{
-			std::lock_guard<std::mutex> _(mutex);
-			const auto entry = master_state.queued_servers.find(address);
-
-			if (entry == master_state.queued_servers.end() || !entry->second)
-			{
-				return;
-			}
-
-			start_time = entry->second;
-			master_state.queued_servers.erase(entry);
-		}
-
-		server_info server{};
-		server.address = address;
-		server.host_name = info.get("hostname");
-		server.map_name = info.get("mapname");
-		server.game_type = game::UI_GetGameTypeDisplayName(info.get("gametype").data());
-		server.mod_name = info.get("fs_game");
-		server.play_mode = playmode;
-		server.clients = atoi(info.get("clients").data());
-		server.max_clients = atoi(info.get("sv_maxclients").data());
-		server.bots = atoi(info.get("bots").data());
-		server.ping = std::min(now - start_time, 999);
-		server.is_private = atoi(info.get("isPrivate").data()) == 1;
-
-		server.in_game = 1;
-
-		insert_server(std::move(server));
-	}
-
 	int get_player_count()
 	{
 		std::lock_guard<std::mutex> _(mutex);
+		/*
 		auto count = 0;
 		for (const auto& server : servers)
 		{
 			count += server.clients - server.bots;
+		}
+		return count;*/
+
+		int count = 0;
+		for (server_list::tcp::PageData page : server_list::tcp::pages) {
+			count += page.get_player_count();
 		}
 		return count;
 	}
@@ -422,7 +501,517 @@ namespace server_list
 	int get_server_count()
 	{
 		std::lock_guard<std::mutex> _(mutex);
-		return static_cast<int>(servers.size());
+		//return static_cast<int>(servers.size());
+		int count = 0;
+		for (server_list::tcp::PageData page : server_list::tcp::pages) {
+			count += page.get_server_count();
+		}
+		return count;
+	}
+
+	int get_server_limit()
+	{
+		return server_limit;
+	}
+
+	void add_favourite(int index)
+	{
+		nlohmann::json obj;
+		if (!get_favourites_file(obj))
+			return;
+
+		if (tcp::current_page < 0 || tcp::current_page >= tcp::pages.size()) {
+			return;
+		}
+
+		tcp::PageData& page = tcp::pages[tcp::current_page];
+
+		if (index < 0 || index >= page.listed_servers.size()) {
+			return;
+		}
+
+		server_info& info = page.listed_servers[index];
+
+		if (obj.find(info.connect_address) != obj.end())
+		{
+			utils::toast::show("Error", "Server already marked as favourite.");
+			return;
+		}
+
+		obj.emplace_back(info.connect_address);
+		utils::io::write_file("players2/favourites.json", obj.dump());
+		utils::toast::show("Success", "Server added to favourites.");
+
+		console::debug("added %s to favourites", info.connect_address);
+	}
+
+	void delete_favourite(int index)
+	{
+		nlohmann::json obj;
+		if (!get_favourites_file(obj)) {
+			return;
+		}
+
+		if (tcp::current_page < 0 || tcp::current_page >= tcp::pages.size()) {
+			return;
+		}
+
+		tcp::PageData& page = tcp::pages[tcp::current_page];
+
+		if (index < 0 || index >= page.listed_servers.size()) {
+			return;
+		}
+
+		server_info& info = page.listed_servers[index];
+
+		for (auto it = obj.begin(); it != obj.end(); ++it)
+		{
+			if (!it->is_string()) {
+				continue;
+			}
+
+			if (it->get<std::string>() == info.connect_address) // Check if the element matches the connect address
+			{
+				console::debug("removed %s from favourites", info.connect_address);
+				obj.erase(it);
+				break;
+			}
+		}
+
+		if (!utils::io::write_file("players2/favourites.json", obj.dump())) {
+			return;
+		}
+
+		page.listed_servers.erase(
+			std::remove_if(
+				page.listed_servers.begin(),
+				page.listed_servers.end(),
+				[&info](const server_info& s) {
+					return s.connect_address == info.connect_address;
+				}
+			),
+			page.listed_servers.end()
+		);
+
+		refresh_server_list();
+	}
+
+	void sort_servers(int sort_type)
+	{
+		std::lock_guard<std::mutex> _(mutex);
+		sort_serverlist(sort_type);
+		trigger_refresh();
+	}
+
+	void server_list::tcp::populate_server_list()
+	{
+		std::string master_server_list = hmw_tcp_utils::GET_url(hmw_tcp_utils::MasterServer::get_master_server());
+
+		// An error message is visible. We want to hide it now.
+		if (error_is_displayed) {
+			ui_scripting::notify("hideErrorMessage", {});
+			error_is_displayed = false;
+		}
+
+		notification_message = "Refreshing server list...";
+		ui_scripting::notify("showRefreshingNotification", {});
+
+		int server_index = 0;
+
+		// @Aphrodite todo, update this to be dynamic and not hard coded to 27017
+		console::info("Checking if localhost server is running on default port (27017)");
+		std::string port = "27017"; // Change this to the dynamic port range @todo
+		bool localhost = hmw_tcp_utils::GameServer::is_localhost(port);
+		if (localhost) {
+			std::string local_res = hmw_tcp_utils::GET_url("localhost:27017/getInfo", true);
+			add_server_to_list(local_res, "localhost:27017", server_index);
+			ui_scripting::notify("updateGameList", {});
+			server_index++;
+		}
+
+		// Master server did not respond
+		if (master_server_list.empty()) {
+			console::info("Failed to get response from master server!");
+			getting_server_list = false;
+			ui_scripting::notify("updateGameList", {});
+			ui_scripting::notify("hideRefreshingNotification", {});
+			display_error("MASTER SERVER ERROR!", "No response!");
+			return;
+		}
+
+		nlohmann::json master_server_response_json = nlohmann::json::parse(master_server_list);
+
+		// Parse server list
+		for (const auto& element : master_server_response_json) {
+			if (interrupt_server_list) {
+				break;
+			}
+
+			std::string connect_address = element.get<std::string>(); 
+			std::string game_server_info = connect_address + "/getInfo";
+			std::string game_server_response = hmw_tcp_utils::GET_url(game_server_info.c_str(), true);
+			
+			if (game_server_response.empty()) {
+				continue;
+			}
+
+			tcp::add_server_to_list(game_server_response, connect_address, server_index);
+			ui_scripting::notify("updateGameList", {});
+			server_index++;
+		}
+
+		load_page(0);
+		interrupt_server_list = false;
+		getting_server_list = false;
+		ui_scripting::notify("updateGameList", {});
+		ui_scripting::notify("hideRefreshingNotification", {});
+	}
+
+	void tcp::populate_server_list_threaded()
+	{
+		if (getting_server_list) {
+			return;
+		}
+
+		scheduler::once([=]()
+		{
+			getting_server_list = true;
+			populate_server_list();
+		}, scheduler::pipeline::async);
+	}
+
+	void tcp::parse_favourites_tcp_threaded()
+	{
+		if (getting_favourites) {
+			return;
+		}
+
+		scheduler::once([=]()
+		{
+			getting_favourites = true;
+			parse_favourites_tcp();
+		}, scheduler::pipeline::async);
+	}
+
+	int tcp::get_server_limit_per_page()
+	{
+		return server_limit_per_page;
+	}
+
+	int tcp::get_current_page()
+	{
+		return current_page;
+	}
+
+	int tcp::get_total_pages()
+	{
+		int total_servers = get_server_count();
+		int total_pages = static_cast<int>(std::ceil(static_cast<double>(total_servers) / server_limit_per_page));
+		return total_pages;
+	}
+
+	int tcp::get_page_number(int serverIndex)
+	{
+		int pageNumber = static_cast<int>(std::ceil(static_cast<double>(serverIndex) / server_limit_per_page));
+		if (pageNumber == 0) {
+			pageNumber++;
+		}
+		return pageNumber;
+	}
+
+	// Once this is working implement next and previous page functions
+
+	void tcp::load_page(int pageNumber)
+	{
+		if (pageNumber < 0) {
+			return;
+		}
+		if (pageNumber >= pages.size()) {
+			return;
+		}
+
+		servers.clear();
+
+		PageData page = pages[pageNumber];
+		std::string log = "Load page " + std::to_string(pageNumber);
+		console::info(log.c_str());
+		for (server_info server : page.listed_servers) {
+			insert_server(std::move(server));
+		}
+		ui_scripting::notify("updateGameList", {});
+		ui_scripting::notify("updatePageCounter", {});
+		current_page = pageNumber;
+	}
+
+	void tcp::next_page()
+	{
+		current_page++;
+		if (current_page >= get_total_pages()) {
+			load_page(0); // Load first page
+			return;
+		}
+		load_page(current_page);
+	}
+
+	void tcp::previous_page()
+	{
+		current_page--;
+		if (current_page < 0) {
+			load_page(get_total_pages() - 1); // Load to last page
+			return;
+		}
+		load_page(current_page);
+	}
+
+	void tcp::add_server_to_page(int pageIndex, server_info &serverInfo)
+	{
+		// Page index can't be negative
+		if (pageIndex < 0) {
+			return;
+		}
+
+		if (pageIndex >= pages.size()) {
+			pages.resize(pageIndex + 1);
+			pages[pageIndex].pageIndex = pageIndex;
+		}
+
+		pages[pageIndex].add_server(serverInfo);
+	}
+
+	std::string tcp::get_notification_message()
+	{
+		return notification_message;
+	}
+
+	std::string tcp::get_error_message()
+	{
+		return error_message;
+	}
+
+	std::string tcp::get_error_header()
+	{
+		return error_header;
+	}
+
+	void tcp::display_error(std::string header, std::string message)
+	{
+		if (error_is_displayed) {
+			return;
+		}
+
+		error_header = header;
+		error_message = message;
+		error_is_displayed = true;
+		ui_scripting::notify("showErrorMessage", {});
+		scheduler::once([=]()
+		{
+			error_is_displayed = false;
+			ui_scripting::notify("hideErrorMessage", {});
+		}, scheduler::pipeline::main, 3s);
+	}
+
+	bool tcp::check_can_join(std::string& connect_address)
+	{
+		std::string game_server_info = connect_address + "/getInfo";
+		std::string game_server_response = hmw_tcp_utils::GET_url(game_server_info.c_str(), true);
+
+		if (game_server_response.empty()) {
+			failed_to_join_reason = "Server did not respond.";
+			return false;
+		}
+
+		nlohmann::json game_server_response_json = nlohmann::json::parse(game_server_response);
+		std::string ping = game_server_response_json["ping"];
+
+		// Don't show servers that aren't using the same protocol!
+		std::string server_protocol = game_server_response_json["protocol"];
+		const auto protocol = std::atoi(server_protocol.c_str());
+		if (protocol != PROTOCOL)
+		{
+			failed_to_join_reason = "Invalid protocol";
+			return false;
+		}
+
+
+		// Don't show servers that aren't running!
+		std::string server_running = game_server_response_json["sv_running"];
+		const auto sv_running = std::atoi(server_running.c_str());
+		if (!sv_running)
+		{
+			failed_to_join_reason = "Server not running.";
+			return false;
+		}
+
+		// Only handle servers of the same playmode!
+		std::string response_playmode = game_server_response_json["playmode"];
+		const auto playmode = game::CodPlayMode(std::atoi(response_playmode.c_str()));
+		if (game::Com_GetCurrentCoDPlayMode() != playmode)
+		{
+			failed_to_join_reason = "Invalid playmode.";
+			return false;
+		}
+
+		// Only show H2M games
+		std::string server_gamename = game_server_response_json["gamename"];
+		if (server_gamename != "H2M")
+		{
+			failed_to_join_reason = "Invalid gamename.";
+			return false;
+		}
+
+		std::string mapname = game_server_response_json["mapname"];
+		if (mapname.empty()) {
+			failed_to_join_reason = "Invalid map.";
+			return false;
+		}
+
+		std::string gametype = game_server_response_json["gametype"];
+		if (gametype.empty()) {
+			failed_to_join_reason = "Invalid gametype.";
+			return false;
+		}
+
+		std::string maxclients = game_server_response_json["sv_maxclients"];
+		std::string clients = game_server_response_json["clients"];
+		std::string bots = game_server_response_json["bots"];
+
+		int max_clients = std::stoi(maxclients);
+		int current_clients = std::stoi(clients);
+		int current_bots = std::stoi(bots);
+		int player_count = current_clients - current_bots;
+
+		if (player_count == max_clients) {
+			failed_to_join_reason = "Game is full.";
+			return false;
+		}
+
+		failed_to_join_reason = "";
+		return true;
+	}
+
+	void tcp::add_server_to_list(const std::string& infoJson, const std::string& connect_address, int server_index)
+	{
+		nlohmann::json game_server_response_json = nlohmann::json::parse(infoJson);
+		std::string ping = game_server_response_json["ping"];
+
+		// Don't show servers that aren't using the same protocol!
+		std::string server_protocol = game_server_response_json["protocol"];
+		const auto protocol = std::atoi(server_protocol.c_str());
+		if (protocol != PROTOCOL)
+		{
+			return;
+		}
+
+		// Don't show servers that aren't dedicated!
+		std::string server_dedicated = game_server_response_json["dedicated"];
+		const auto dedicated = std::atoi(server_dedicated.c_str());
+		if (!dedicated)
+		{
+			return;
+		}
+
+		// Don't show servers that aren't running!
+		std::string server_running = game_server_response_json["sv_running"];
+		const auto sv_running = std::atoi(server_running.c_str());
+		if (!sv_running)
+		{
+			return;
+		}
+
+		// Only handle servers of the same playmode!
+		std::string response_playmode = game_server_response_json["playmode"];
+		const auto playmode = game::CodPlayMode(std::atoi(response_playmode.c_str()));
+		if (game::Com_GetCurrentCoDPlayMode() != playmode)
+		{
+			return;
+		}
+
+		// Only show H2M games
+		std::string server_gamename = game_server_response_json["gamename"];
+		if (server_gamename != "H2M")
+		{
+			return;
+		}
+
+		game::netadr_s address{};
+		if (game::NET_StringToAdr(connect_address.c_str(), &address))
+		{
+			server_info server{};
+			server.address = address;
+			server.host_name = game_server_response_json["hostname"];
+			server.map_name = game_server_response_json["mapname"];
+
+			std::string game_type = game_server_response_json["gametype"];
+			server.game_type = game::UI_GetGameTypeDisplayName(game_type.c_str());
+			server.mod_name = game_server_response_json["fs_game"];
+
+			server.play_mode = playmode;
+
+			std::string clients = game_server_response_json["clients"];
+			server.clients = atoi(clients.c_str());
+
+			std::string max_clients = game_server_response_json["sv_maxclients"];
+			server.max_clients = atoi(max_clients.c_str());
+
+			std::string bots = game_server_response_json["bots"];
+			server.bots = atoi(bots.c_str());
+
+			server.ping = std::atoi(ping.c_str());
+
+			std::string isPrivate = game_server_response_json["isPrivate"];
+			server.is_private = atoi(isPrivate.c_str()) == 1;
+
+			server.connect_address = connect_address;
+			//insert_server(std::move(server)); // Old method of adding servers to the list. Replaced with paging
+
+			int page_number = get_page_number(server_index) - 1;
+			/* This breaks things ???
+			if (page_number == 0) {
+				insert_server(std::move(server)); // Populate the first page in real time
+			}*/
+
+			add_server_to_page(page_number, server);
+		}
+	}
+
+	void tcp::parse_favourites_tcp()
+	{
+		notification_message = "Loading favourites...";
+		ui_scripting::notify("showRefreshingNotification", {});
+		int server_index = 0;
+		nlohmann::json obj;
+		if (!get_favourites_file(obj)) {
+			ui_scripting::notify("updateGameList", {});
+			return;
+		}
+
+		for (auto& element : obj) {
+			if (interrupt_favourites) {
+				break;
+			}
+
+			if (!element.is_string())
+				continue;
+
+			std::string connect_address = element;
+			std::string game_server_info = connect_address + "/getInfo";
+			std::string game_server_response = hmw_tcp_utils::GET_url(game_server_info.c_str(), true);
+
+			// Don't show any non TCP servers
+			if (game_server_response.empty()) {
+				continue;
+			}
+
+			tcp::add_server_to_list(game_server_response, connect_address, server_index);
+			ui_scripting::notify("updateGameList", {});
+			server_index++;
+		}
+		load_page(0);
+		console::info("Finished getting favourites!");
+		interrupt_favourites = false;
+		getting_favourites = false;
+		ui_scripting::notify("updateGameList", {});
+		ui_scripting::notify("hideRefreshingNotification", {});
 	}
 
 	class component final : public component_interface
@@ -430,23 +1019,6 @@ namespace server_list
 	public:
 		void post_unpack() override
 		{
-			if (!game::environment::is_sp())
-			{
-				scheduler::once([]()
-				{
-					// add dvars to change destination master server ip/port
-					master_server_ip = dvars::register_string("masterServerIP", "h1.fed.cat", game::DVAR_FLAG_NONE,
-						"IP of the destination master server to connect to");
-					master_server_port = dvars::register_string("masterServerPort", "20810", game::DVAR_FLAG_NONE,
-						"Port of the destination master server to connect to");
-				}, scheduler::pipeline::main);
-			}
-
-			if (!game::environment::is_mp())
-			{
-				return;
-			}
-
 			// hook LUI_OpenMenu to refresh server list for system link menu
 			lui_open_menu_hook.create(game::LUI_OpenMenu, lui_open_menu_stub);
 
@@ -511,51 +1083,6 @@ namespace server_list
 			}), true);
 
 			scheduler::loop(do_frame_work, scheduler::pipeline::main);
-			scheduler::loop(check_refresh, scheduler::pipeline::lui, 10ms);
-
-			network::on("getServersResponse", [](const game::netadr_s& target, const std::string& data)
-			{
-				{
-					std::lock_guard<std::mutex> _(mutex);
-					if (!master_state.requesting || master_state.address != target)
-					{
-						return;
-					}
-
-					master_state.requesting = false;
-
-					std::optional<size_t> start{};
-					for (std::size_t i = 0; i + 6 < data.size(); ++i)
-					{
-						if (data[i + 6] == '\\')
-						{
-							start.emplace(i);
-							break;
-						}
-					}
-
-					if (!start.has_value())
-					{
-						return;
-					}
-
-					for (auto i = start.value(); i + 6 < data.size(); i += 7)
-					{
-						if (data[i + 6] != '\\')
-						{
-							break;
-						}
-
-						game::netadr_s address{};
-						address.type = game::NA_IP;
-						address.localNetID = game::NS_CLIENT1;
-						std::memcpy(&address.ip[0], data.data() + i + 0, 4);
-						std::memcpy(&address.port, data.data() + i + 4, 2);
-
-						master_state.queued_servers[address] = 0;
-					}
-				}
-			});
 		}
 	};
 }

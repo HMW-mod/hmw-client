@@ -1,15 +1,9 @@
 #pragma once
 #include <d3d11.h>
 
-#define PROTOCOL 2
+#define PROTOCOL 3
 
-#ifdef DEBUG
-#define assert_sizeof(__ASSET__, __SIZE__) static_assert(sizeof(__ASSET__) == __SIZE__)
-#define assert_offsetof(__ASSET__, __VARIABLE__, __OFFSET__) static_assert(offsetof(__ASSET__, __VARIABLE__) == __OFFSET__)
-#else
-#define assert_sizeof(__ASSET__, __SIZE__)
-#define assert_offsetof(__ASSET__, __VARIABLE__, __OFFSET__)
-#endif
+#include "database.hpp"
 
 namespace game
 {
@@ -18,11 +12,9 @@ namespace game
 	typedef vec_t vec3_t[3];
 	typedef vec_t vec4_t[4];
 
+	using namespace database;
+
 	// * scripting
-	enum scr_string_t
-	{
-		scr_string_t_dummy = 0x0,
-	};
 
 	struct scr_entref_t
 	{
@@ -1063,130 +1055,9 @@ namespace game
 		THREAD_CONTEXT_COUNT = 0x10,
 	};
 
-	enum DBSyncMode
-	{
-		DB_LOAD_ASYNC = 0x0,
-		DB_LOAD_SYNC = 0x1,
-		DB_LOAD_ASYNC_WAIT_ALLOC = 0x2,
-		DB_LOAD_ASYNC_FORCE_FREE = 0x3,
-		DB_LOAD_ASYNC_NO_SYNC_THREADS = 0x4,
-		DB_LOAD_SYNC_SKIP_ALWAYS_LOADED = 0x5,
-	};
-
-	enum DBAllocFlags : std::int32_t
-	{
-		DB_ZONE_NONE = 0x0,
-		DB_ZONE_COMMON = 0x1,
-		DB_ZONE_UI = 0x2,
-		DB_ZONE_GAME = 0x4,
-		DB_ZONE_LOAD = 0x8,
-		DB_ZONE_DEV = 0x10,
-		DB_ZONE_BASEMAP = 0x20,
-		DB_ZONE_TRANSIENT_POOL = 0x40,
-		DB_ZONE_TRANSIENT_MASK = 0x40,
-		DB_ZONE_CUSTOM = 0x1000 // added for custom zone loading
-	};
-
-	struct XZoneInfo
-	{
-		const char* name;
-		int allocFlags;
-		int freeFlags;
-	};
-
-	struct XZoneInfoInternal
-	{
-		char name[64];
-		int flags;
-		int isBaseMap;
-	};
-
-	enum XAssetType
-	{
-		ASSET_TYPE_PHYSPRESET,
-		ASSET_TYPE_PHYS_COLLMAP,
-		ASSET_TYPE_PHYSWATERPRESET,
-		ASSET_TYPE_PHYS_WORLDMAP,
-		ASSET_TYPE_PHYSCONSTRAINT,
-		ASSET_TYPE_XANIM,
-		ASSET_TYPE_XMODELSURFS,
-		ASSET_TYPE_XMODEL,
-		ASSET_TYPE_MATERIAL,
-		ASSET_TYPE_COMPUTESHADER,
-		ASSET_TYPE_VERTEXSHADER,
-		ASSET_TYPE_HULLSHADER,
-		ASSET_TYPE_DOMAINSHADER,
-		ASSET_TYPE_PIXELSHADER,
-		ASSET_TYPE_VERTEXDECL,
-		ASSET_TYPE_TECHSET,
-		ASSET_TYPE_IMAGE,
-		ASSET_TYPE_SOUND,
-		ASSET_TYPE_SOUNDSUBMIX,
-		ASSET_TYPE_SNDCURVE,
-		ASSET_TYPE_LPFCURVE,
-		ASSET_TYPE_REVERBSENDCURVE,
-		ASSET_TYPE_SNDCONTEXT,
-		ASSET_TYPE_LOADED_SOUND,
-		ASSET_TYPE_COL_MAP_MP,
-		ASSET_TYPE_COM_MAP,
-		ASSET_TYPE_GLASS_MAP,
-		ASSET_TYPE_AIPATHS,
-		ASSET_TYPE_VEHICLE_TRACK,
-		ASSET_TYPE_MAP_ENTS,
-		ASSET_TYPE_FX_MAP,
-		ASSET_TYPE_GFX_MAP,
-		ASSET_TYPE_LIGHTDEF,
-		ASSET_TYPE_UI_MAP,
-		ASSET_TYPE_MENUFILE,
-		ASSET_TYPE_MENU,
-		ASSET_TYPE_ANIMCLASS,
-		ASSET_TYPE_LOCALIZE,
-		ASSET_TYPE_ATTACHMENT,
-		ASSET_TYPE_WEAPON,
-		ASSET_TYPE_SNDDRIVERGLOBALS,
-		ASSET_TYPE_FX,
-		ASSET_TYPE_IMPACTFX,
-		ASSET_TYPE_SURFACEFX,
-		ASSET_TYPE_AITYPE,
-		ASSET_TYPE_MPTYPE,
-		ASSET_TYPE_CHARACTER,
-		ASSET_TYPE_XMODELALIAS,
-		ASSET_TYPE_RAWFILE,
-		ASSET_TYPE_SCRIPTFILE,
-		ASSET_TYPE_STRINGTABLE,
-		ASSET_TYPE_LEADERBOARDDEF,
-		ASSET_TYPE_VIRTUALLEADERBOARDDEF,
-		ASSET_TYPE_STRUCTUREDDATADEF,
-		ASSET_TYPE_DDL,
-		ASSET_TYPE_PROTO,
-		ASSET_TYPE_TRACER,
-		ASSET_TYPE_VEHICLE,
-		ASSET_TYPE_ADDON_MAP_ENTS,
-		ASSET_TYPE_NETCONSTSTRINGS,
-		ASSET_TYPE_REVERBPRESET,
-		ASSET_TYPE_LUAFILE,
-		ASSET_TYPE_SCRIPTABLE,
-		ASSET_TYPE_EQUIPSNDTABLE,
-		ASSET_TYPE_VECTORFIELD,
-		ASSET_TYPE_DOPPLERPRESET,
-		ASSET_TYPE_PARTICLESIMANIMATION,
-		ASSET_TYPE_LASER,
-		ASSET_TYPE_SKELETONSCRIPT,
-		ASSET_TYPE_CLUT,
-		ASSET_TYPE_TTF,
-		ASSET_TYPE_COUNT
-	};
-
 	enum GfxDrawSceneMethod
 	{
 		GFX_DRAW_SCENE_STANDARD = 0x0,
-	};
-
-	enum MaterialTechniqueType
-	{
-		TECHNIQUE_UNLIT = 8,
-		TECHNIQUE_EMISSIVE = 9,
-		TECHNIQUE_LIT = 13,
 	};
 
 	struct GfxDrawMethod_s
@@ -1195,522 +1066,6 @@ namespace game
 		int baseTechType;
 		int emissiveTechType;
 		int forceTechType;
-	};
-
-	struct GfxImage;
-
-	union MaterialTextureDefInfo
-	{
-		GfxImage* image;
-		void* water;
-	};
-
-	struct MaterialTextureDef
-	{
-		unsigned int nameHash;
-		char nameStart;
-		char nameEnd;
-		char samplerState;
-		char semantic;
-		MaterialTextureDefInfo u;
-	};
-
-	struct MaterialPass
-	{
-		void* vertexShader;
-		void* vertexDecl;
-		void* hullShader;
-		void* domainShader;
-		void* pixelShader;
-		char pixelOutputMask;
-		char perPrimArgCount;
-		char perObjArgCount;
-		char stableArgCount;
-		unsigned __int16 perPrimArgSize;
-		unsigned __int16 perObjArgSize;
-		unsigned __int16 stableArgSize;
-		char zone;
-		char perPrimConstantBuffer;
-		char perObjConstantBuffer;
-		char stableConstantBuffer;
-		unsigned int customBufferFlags;
-		char customSamplerFlags;
-		char precompiledIndex;
-		char stageConfig;
-		void* args;
-	};
-
-	struct MaterialTechnique
-	{
-		const char* name;
-		unsigned __int16 flags;
-		unsigned __int16 passCount;
-		MaterialPass passArray[1];
-	};
-
-	struct MaterialTechniqueSet
-	{
-		const char* name;
-		unsigned __int16 flags;
-		char worldVertFormat;
-		char preDisplacementOnlyCount;
-		MaterialTechnique* techniques[309];
-	};
-
-	struct GfxStateBits
-	{
-		unsigned int loadBits[3];
-		char zone;
-		char depthStencilState[11];
-		char blendState;
-		char rasterizerState;
-	};
-
-	struct Packed128
-	{
-		std::uint64_t p0;
-		std::uint64_t p1;
-	};
-
-	struct GfxDrawSurfFields
-	{
-		unsigned __int64 objectId : 16; // p0 >> 0
-		unsigned __int64 pad0 : 20;
-		unsigned __int64 reflectionProbeIndex : 8;
-		unsigned __int64 hasGfxEntIndex : 1;
-		unsigned __int64 customIndex : 5; // p0 >> 45
-		unsigned __int64 materialSortedIndex : 14; // p0 >> 50
-		unsigned __int64 tessellation : 2; // p1 >> 0
-		unsigned __int64 prepass : 2; // p1 >> 2
-		unsigned __int64 pad1 : 4;
-		unsigned __int64 useHeroLighting : 1;
-		unsigned __int64 sceneLightEnvIndex : 16;
-		unsigned __int64 viewModelRender : 1;
-		unsigned __int64 surfType : 4;
-		unsigned __int64 primarySortKey : 6; // p1 >> 30
-		unsigned __int64 unused : 28;
-	};
-
-	union GfxDrawSurf
-	{
-		GfxDrawSurfFields fields;
-		Packed128 packed;
-	};
-
-	enum SurfaceTypeBits : std::uint64_t
-	{
-		SURFTYPE_BITS_DEFAULT = 0x0,
-		SURFTYPE_BITS_BARK = 0x1,
-		SURFTYPE_BITS_BRICK = 0x2,
-		SURFTYPE_BITS_CARPET = 0x4,
-		SURFTYPE_BITS_CLOTH = 0x8,
-		SURFTYPE_BITS_CONCRETE = 0x10,
-		SURFTYPE_BITS_DIRT = 0x20,
-		SURFTYPE_BITS_FLESH = 0x40,
-		SURFTYPE_BITS_FOLIAGE_DEBRIS = 0x80,
-		SURFTYPE_BITS_GLASS = 0x100,
-		SURFTYPE_BITS_GRASS = 0x200,
-		SURFTYPE_BITS_GRAVEL = 0x400,
-		SURFTYPE_BITS_ICE = 0x800,
-		SURFTYPE_BITS_METAL_SOLID = 0x1000,
-		SURFTYPE_BITS_METAL_GRATE = 0x2000,
-		SURFTYPE_BITS_MUD = 0x4000,
-		SURFTYPE_BITS_PAPER = 0x8000,
-		SURFTYPE_BITS_PLASTER = 0x10000,
-		SURFTYPE_BITS_ROCK = 0x20000,
-		SURFTYPE_BITS_SAND = 0x40000,
-		SURFTYPE_BITS_SNOW = 0x80000,
-		SURFTYPE_BITS_WATER_WAIST = 0x100000,
-		SURFTYPE_BITS_WOOD_SOLID = 0x200000,
-		SURFTYPE_BITS_ASPHALT = 0x400000,
-		SURFTYPE_BITS_CERAMIC = 0x800000,
-		SURFTYPE_BITS_PLASTIC_SOLID = 0x1000000,
-		SURFTYPE_BITS_RUBBER = 0x2000000,
-		SURFTYPE_BITS_FRUIT = 0x4000000,
-		SURFTYPE_BITS_PAINTEDMETAL = 0x8000000,
-		SURFTYPE_BITS_RIOTSHIELD = 0x10000000,
-		SURFTYPE_BITS_SLUSH = 0x20000000,
-		SURFTYPE_BITS_ASPHALT_WET = 0x40000000,
-		SURFTYPE_BITS_ASPHALT_DEBRIS = 0x80000000,
-		SURFTYPE_BITS_CONCRETE_WET = 0x100000000,
-		SURFTYPE_BITS_CONCRETE_DEBRIS = 0x200000000,
-		SURFTYPE_BITS_FOLIAGE_VEGETATION = 0x400000000,
-		SURFTYPE_BITS_FOLIAGE_LEAVES = 0x800000000,
-		SURFTYPE_BITS_GRASS_TALL = 0x1000000000,
-		SURFTYPE_BITS_METAL_HOLLOW = 0x2000000000,
-		SURFTYPE_BITS_METAL_VEHICLE = 0x4000000000,
-		SURFTYPE_BITS_METAL_THIN = 0x8000000000,
-		SURFTYPE_BITS_METAL_WET = 0x10000000000,
-		SURFTYPE_BITS_METAL_DEBRIS = 0x20000000000,
-		SURFTYPE_BITS_PLASTIC_HOLLOW = 0x40000000000,
-		SURFTYPE_BITS_PLASTIC_TARP = 0x80000000000,
-		SURFTYPE_BITS_ROCK_WET = 0x100000000000,
-		SURFTYPE_BITS_ROCK_DEBRIS = 0x200000000000,
-		SURFTYPE_BITS_WATER_ANKLE = 0x400000000000,
-		SURFTYPE_BITS_WATER_KNEE = 0x800000000000,
-		SURFTYPE_BITS_WOOD_HOLLOW = 0x1000000000000,
-		SURFTYPE_BITS_WOOD_WET = 0x2000000000000,
-		SURFTYPE_BITS_WOOD_DEBRIS = 0x4000000000000,
-		SURFTYPE_BITS_CUSHION = 0x8000000000000,
-	};
-
-	struct MaterialInfo
-	{
-		const char* name;
-		unsigned char gameFlags;
-		unsigned char sortKey;
-		unsigned char textureAtlasRowCount;
-		unsigned char textureAtlasColumnCount;
-		unsigned char textureAtlasFrameBlend;
-		unsigned char textureAtlasAsArray;
-		unsigned char renderFlags;
-		GfxDrawSurf drawSurf;
-		void* surfaceTypeBits;
-		unsigned int hashIndex;
-	};
-
-	struct Material
-	{
-		union
-		{
-			const char* name;
-			MaterialInfo info;
-		};
-		unsigned char stateBitsEntry[240];
-		unsigned char textureCount;
-		unsigned char constantCount;
-		unsigned char stateBitsCount;
-		unsigned char stateFlags;
-		unsigned char cameraRegion;
-		unsigned char materialType;
-		unsigned char layerCount;
-		unsigned char assetFlags;
-		MaterialTechniqueSet* techniqueSet;
-		MaterialTextureDef* textureTable;
-		void* constantTable;
-		GfxStateBits* stateBitsTable;
-		unsigned char constantBufferIndex[240];
-		void* constantBufferTable;
-		unsigned char constantBufferCount;
-		const char** subMaterials;
-	};
-
-	static_assert(sizeof(Material) == 0x250);
-
-	struct Glyph
-	{
-		unsigned short letter;
-		char x0;
-		char y0;
-		char dx;
-		char pixelWidth;
-		char pixelHeight;
-		float s0;
-		float t0;
-		float s1;
-		float t1;
-	};
-
-	struct Font_s
-	{
-		const char* fontName;
-		int pixelHeight;
-		int glyphCount;
-		Material* material;
-		Material* glowMaterial;
-		Glyph* glyphs;
-	};
-
-	struct StreamFileNameRaw
-	{
-		const char* dir;
-		const char* name;
-	};
-
-	struct StreamFileNamePacked
-	{
-		unsigned __int64 offset;
-		unsigned __int64 length;
-	};
-
-	union StreamFileInfo
-	{
-		StreamFileNameRaw raw;
-		StreamFileNamePacked packed;
-	};
-
-	struct StreamFileName
-	{
-		unsigned __int16 isLocalized;
-		unsigned __int16 fileIndex;
-		StreamFileInfo info;
-	};
-
-	struct StreamedSound
-	{
-		StreamFileName filename;
-		unsigned int totalMsec;
-	};
-
-	union SoundFileRef
-	{
-		StreamedSound streamSnd;
-	};
-
-	struct SoundFile
-	{
-		char type;
-		char exists;
-		SoundFileRef u;
-	};
-
-	struct snd_alias_t
-	{
-		const char* aliasName;
-		char __pad0[24];
-		SoundFile* soundFile;
-		char __pad1[198];
-		// not gonna map this out...
-	};
-
-	struct snd_alias_list_t
-	{
-		const char* aliasName;
-		snd_alias_t* head;
-		void* unk;
-		unsigned char count;
-		unsigned char unkCount;
-		char __pad0[6];
-	};
-
-	struct RawFile
-	{
-		const char* name;
-		int compressedLen;
-		int len;
-		const char* buffer;
-	};
-
-	struct ScriptFile
-	{
-		const char* name;
-		int compressedLen;
-		int len;
-		int bytecodeLen;
-		char* buffer;
-		char* bytecode;
-	};
-
-	struct StringTableCell
-	{
-		const char* string;
-		int hash;
-	};
-
-	struct StringTable
-	{
-		const char* name;
-		int columnCount;
-		int rowCount;
-		StringTableCell* values;
-	};
-
-	struct LuaFile
-	{
-		const char* name;
-		int len;
-		char strippingType;
-		const char* buffer;
-	};
-
-	struct TTF
-	{
-		const char* name;
-		int len;
-		const char* buffer;
-		int fontFace;
-	};
-
-	struct GfxImageLoadDef
-	{
-		char levelCount;
-		char numElements;
-		char pad[2];
-		int flags;
-		int format;
-		int resourceSize;
-		char data[1];
-	};
-
-	struct GfxTexture
-	{
-		union
-		{
-			ID3D11Texture1D* linemap;
-			ID3D11Texture2D* map;
-			ID3D11Texture3D* volmap;
-			ID3D11Texture2D* cubemap;
-			GfxImageLoadDef* loadDef;
-		};
-		ID3D11ShaderResourceView* shaderView;
-		ID3D11ShaderResourceView* shaderViewAlternate;
-	};
-
-	struct Picmip
-	{
-		char platform[2];
-	};
-
-	struct CardMemory
-	{
-		int platform[2];
-	};
-
-	struct GfxImage
-	{
-		GfxTexture textures;
-		int flags;
-		int imageFormat;
-		int resourceSize;
-		char mapType;
-		char semantic;
-		char category;
-		char flags2;
-		Picmip picmip;
-		char track;
-		//CardMemory cardMemory;
-		unsigned short width;
-		unsigned short height;
-		unsigned short depth;
-		unsigned short numElements;
-		char pad3[4];
-		void* pixelData;
-		//GfxImageLoadDef *loadDef;
-		uint64_t streams[4];
-		const char* name;
-	};
-
-	struct XModel
-	{
-		const char* name;
-	};
-
-	struct WeaponDef
-	{
-		const char* name;
-	};
-
-	struct LocalizeEntry
-	{
-		const char* value;
-		const char* name;
-	};
-
-	struct DDLMember
-	{
-		const char* name;
-		int index;
-		void* parent;
-		int bitSize;
-		int limitSize;
-		int offset;
-		int type;
-		int externalIndex;
-		unsigned int rangeLimit;
-		unsigned int serverDelta;
-		unsigned int clientDelta;
-		int arraySize;
-		int enumIndex;
-		int permission;
-	};
-
-	struct DDLHash
-	{
-		unsigned int hash;
-		int index;
-	};
-
-	struct DDLHashTable
-	{
-		DDLHash* list;
-		int count;
-		int max;
-	};
-
-	struct DDLStruct
-	{
-		const char* name;
-		int bitSize;
-		int memberCount;
-		DDLMember* members;
-		DDLHashTable hashTableUpper;
-		DDLHashTable hashTableLower;
-	};
-
-	struct DDLEnum
-	{
-		const char* name;
-		int memberCount;
-		const char** members;
-		DDLHashTable hashTable;
-	};
-
-	struct DDLDef
-	{
-		char* name;
-		unsigned short version;
-		unsigned int checksum;
-		unsigned char flags;
-		int bitSize;
-		int byteSize;
-		DDLStruct* structList;
-		int structCount;
-		DDLEnum* enumList;
-		int enumCount;
-		DDLDef* next;
-		int headerBitSize;
-		int headerByteSize;
-		int reserveSize;
-		int userFlagsSize;
-		bool paddingUsed;
-	};
-
-	struct DDLRoot
-	{
-		const char* name;
-		DDLDef* ddlDef;
-	};
-
-	union XAssetHeader
-	{
-		void* data;
-		Material* material;
-		Font_s* font;
-		RawFile* rawfile;
-		ScriptFile* scriptfile;
-		StringTable* stringTable;
-		LuaFile* luaFile;
-		GfxImage* image;
-		TTF* ttf;
-		XModel* model;
-		WeaponDef* weapon;
-		LocalizeEntry* localize;
-	};
-
-	struct XAsset
-	{
-		XAssetType type;
-		XAssetHeader header;
-	};
-
-	struct XAssetEntry
-	{
-		XAsset asset;
-		char zoneIndex;
-		volatile char inuseMask;
-		unsigned int nextHash;
-		unsigned int nextOverride;
-		unsigned int nextPoolEntry;
 	};
 
 	enum TestClientType
@@ -1737,6 +1092,22 @@ namespace game
 		char __pad1[0x2C]; // not correct
 	};
 
+	enum scriptType_e
+	{
+		SCRIPT_NONE = 0,
+		SCRIPT_OBJECT = 1,
+		SCRIPT_STRING = 2,
+		SCRIPT_ISTRING = 3,
+		SCRIPT_VECTOR = 4,
+		SCRIPT_FLOAT = 5,
+		SCRIPT_INTEGER = 6,
+		SCRIPT_END = 8,
+		SCRIPT_FUNCTION = 9,
+		SCRIPT_STRUCT = 19,
+		SCRIPT_ENTITY = 21,
+		SCRIPT_ARRAY = 22,
+	};
+
 	struct Bounds
 	{
 		float midPoint[3];
@@ -1749,8 +1120,8 @@ namespace game
 		float y;
 		float w;
 		float h;
-		int horzAlign;
-		int vertAlign;
+		char horzAlign;
+		char vertAlign;
 	};
 
 	// made up
@@ -1760,7 +1131,13 @@ namespace game
 		int ping;
 		char __pad1[0x8];
 		int num_players;
+		char __pad2[48];
+		int serverTime;
 	};
+
+	static_assert(offsetof(client_state_t, ping) == 0x4A50);
+	static_assert(offsetof(client_state_t, num_players) == 0x4A5C);
+	static_assert(offsetof(client_state_t, serverTime) == 19088);
 
 	// made up
 	struct connect_state_t
@@ -1768,23 +1145,6 @@ namespace game
 		char __pad0[0xC];
 		netadr_s address;
 	};
-
-	static_assert(offsetof(client_state_t, ping) == 0x4A50);
-	static_assert(offsetof(client_state_t, num_players) == 0x4A5C);
-
-	struct pmove_t
-	{
-		unsigned char __pad0[0x190];
-	};
-
-	static_assert(sizeof(pmove_t) == 0x190);
-
-	struct pml_t
-	{
-		unsigned char __pad0[0x130];
-	};
-
-	static_assert(sizeof(pml_t) == 0x130);
 
 	enum PlayerHandIndex
 	{
@@ -1890,514 +1250,387 @@ namespace game
 		PhysicalMemoryPrim prim[2];
 	}; static_assert(sizeof(PhysicalMemory) == 0xA60);
 
-	namespace mp
+	struct PlayerActiveWeaponState
 	{
-		struct cachedSnapshot_t
-		{
-			int archivedFrame;
-			int time;
-			int num_entities;
-			int first_entity;
-			int num_clients;
-			int first_client;
-			int num_agents;
-			int first_agent;
-			unsigned int scriptableCount;
-			unsigned int scriptableFirstIndex;
-			int usesDelta;
-		};
+		int weapAnim;
+		int weaponTime;
+		int weaponDelay;
+		int weaponRestrictKickTime;
+		int weaponState;
+		int weapHandFlags;
+		unsigned int weaponShotCount;
+	};
 
-		enum sessionState_t
-		{
-			SESS_STATE_PLAYING = 0x0,
-			SESS_STATE_DEAD = 0x1,
-			SESS_STATE_SPECTATOR = 0x2,
-			SESS_STATE_INTERMISSION = 0x3,
-		};
+	struct PlayerWeaponCommonState
+	{
+		char __pad0[12];
+		Weapon weapon;
+		int weapFlags;
+		char __pad1[28];
+		PlayerHandIndex lastWeaponHand;
+	};
 
-		enum team_t
-		{
-			TEAM_FREE = 0x0,
-			TEAM_BAD = 0x0,
-			TEAM_AXIS = 0x1,
-			TEAM_ALLIES = 0x2,
-			TEAM_SPECTATOR = 0x3,
-			TEAM_NUM_TEAMS = 0x4,
-		};
+	static_assert(offsetof(PlayerWeaponCommonState, weapon) == 12);
+	static_assert(offsetof(PlayerWeaponCommonState, lastWeaponHand) == 48);
 
-		struct gclient_s
-		{
-			char __pad0[2];
-			char pm_type; // 2
-			char __pad1[297];
-			float angles[3]; // 300 304 308
-			char __pad2[18264];
-			sessionState_t sessionState;
-			char __pad3[220]; // 254
-			team_t team;
-			char __pad4[30];
-			char name[32]; // 18834
-			char __pad5[622];
-			int flags; // 19488 
-		}; // size = ?
+	struct PlayerEquippedWeaponState
+	{
+		bool usedBefore;
+		bool dualWielding;
+		bool inAltMode;
+		bool needsRechamber[2];
+		int zoomLevelIndex;
+		bool thermalEnabled;
+		bool hybridScope;
+	};
 
-		static_assert(offsetof(gclient_s, angles) == 300);
-		static_assert(offsetof(gclient_s, sessionState) == 18576);
-		static_assert(offsetof(gclient_s, team) == 18800);
-		static_assert(offsetof(gclient_s, name) == 18834);
-		static_assert(offsetof(gclient_s, flags) == 19488);
+	struct cachedSnapshot_t
+	{
+		int archivedFrame;
+		int time;
+		int num_entities;
+		int first_entity;
+		int num_clients;
+		int first_client;
+		int num_agents;
+		int first_agent;
+		unsigned int scriptableCount;
+		unsigned int scriptableFirstIndex;
+		int usesDelta;
+	};
 
-		struct usercmd_s
-		{
-			char __pad0[28];
-			char forwardmove;
-			char rightmove;
-			char __pad1[34];
-		};
+	enum sessionState_t
+	{
+		SESS_STATE_PLAYING = 0x0,
+		SESS_STATE_DEAD = 0x1,
+		SESS_STATE_SPECTATOR = 0x2,
+		SESS_STATE_INTERMISSION = 0x3,
+	};
 
-		struct EntityState
-		{
-			uint16_t number;
-		}; // size = ?
+	enum team_t
+	{
+		TEAM_FREE = 0x0,
+		TEAM_BAD = 0x0,
+		TEAM_AXIS = 0x1,
+		TEAM_ALLIES = 0x2,
+		TEAM_SPECTATOR = 0x3,
+		TEAM_NUM_TEAMS = 0x4,
+	};
+
+	struct usercmd_s
+	{
+		int serverTime;
+		unsigned int buttons;
+		char __pad0[20];
+		char forwardmove;
+		char rightmove;
+		char __pad1[34];
+	};
+	static_assert(offsetof(usercmd_s, forwardmove) == 28);
+	static_assert(offsetof(usercmd_s, rightmove) == 29);
+
+	struct session_t
+	{
+		int connected;
+		usercmd_s cmd;
+	}; // 68
+
+	struct gclient_s
+	{
+		// playerstate is here from down
+		char __pad0[2];
+		char pm_type; // 2
+		char __pad1[297]; // 3
+		float angles[3]; // 300 304 308
+		char __pad2[236]; // 312
+
+		PlayerActiveWeaponState weaponState[2]; // 548
+		char __pad_2_almost_over[300]; // 604
+
+		PlayerWeaponCommonState weapCommon; // 904
+		char __pad2_over[17620]; // 956
+
+		sessionState_t sessionState; // 18576
+		char __pad3[20]; // 18580
+		session_t sess; // 18600
+		char __pad3_align[132]; // 18604
+
+		team_t team; // 18800
+		char __pad4[30];
+		char name[32]; // 18834
+		char __pad5[622];
+		int flags; // 19488 
+	}; // size = ?
+
+	static_assert(offsetof(gclient_s, angles) == 300);
+	static_assert(offsetof(gclient_s, weaponState) == 548);
+	static_assert(offsetof(gclient_s, sessionState) == 18576);
+	static_assert(offsetof(gclient_s, team) == 18800);
+	static_assert(offsetof(gclient_s, name) == 18834);
+	static_assert(offsetof(gclient_s, flags) == 19488);
+
+	struct EntityState
+	{
+		uint16_t number;
+	}; // size = ?
+
+	struct EntHandle
+	{
+		uint16_t number;
+		uint16_t infoIndex;
+	};
 
 #pragma pack(push, 1)
-		struct gentity_s
-		{
-			EntityState s;
-			char __pad0[342];
-			gclient_s* client;
-			char __pad1[80];
-			int flags;
-			char __pad2[300];
-		}; // size = 736
+	struct gentity_s
+	{
+		EntityState s;
+		char _padding[106];
+		vec3_t trBase;
+		vec3_t trDelta;
+		char _padding1[12];
+		vec3_t currentAngles;
+		char pad_0008[108];
+		Bounds box;
+		Bounds absBox;
+		vec3_t origin;
+		char pad_0144[12];
+		short owner;
+		char _pad0[6];
+		gclient_s* client;
+		char _pad1[56];
+		scr_string_t script_classname;
+		char _pad2[20];
+		int flags;
+		int eventTime;
+		int clipmask; // 440
+		char _pad3[60];
+		int missile_flags;
+		char _pad4[68];
+		EntHandle remoteControlledOwner;
+		char _pad5[156];
+	}; // size = 736
 #pragma pack(pop)
+	static_assert(offsetof(gentity_s, owner) == 0x150);
+	static_assert(sizeof(gentity_s) == 736);
 
-		static_assert(sizeof(gentity_s) == 736);
-
-		struct SprintState
-		{
-			int sprintButtonUpRequired;
-			int sprintDelay;
-			int lastSprintStart;
-			int lastSprintEnd;
-			int sprintStartMaxLength;
-		};
-
-		struct playerState_s
-		{
-			char clientNum;
-			char __pad0[1];
-			char pm_type;
-			char __pad1[44];
-			int otherFlags;
-			char __pad2[28];
-			int pm_time;
-			int pm_flags;
-			int eFlags;
-			int linkFlags;
-			char __pad3[24];
-			vec3_t origin;
-			vec3_t velocity;
-			char __pad4[312];
-			SprintState sprintState;
-			char __pad5[88];
-			int weaponState0;
-			char __pad6[7040];
-			int perks[2];
-		};
-
-		static_assert(offsetof(playerState_s, pm_type) == 2);
-		//static_assert(offsetof(playerState_s, groundEntityNum) == 34);
-		static_assert(offsetof(playerState_s, otherFlags) == 48);
-		static_assert(offsetof(playerState_s, pm_time) == 80);
-		static_assert(offsetof(playerState_s, pm_flags) == 84);
-		static_assert(offsetof(playerState_s, eFlags) == 88);
-		static_assert(offsetof(playerState_s, linkFlags) == 92);
-		static_assert(offsetof(playerState_s, origin) == 120);
-		static_assert(offsetof(playerState_s, velocity) == 132);
-		static_assert(offsetof(playerState_s, sprintState) == 456);
-		static_assert(offsetof(playerState_s, weaponState0) == 564);
-		static_assert(offsetof(playerState_s, perks) == 7608);
-
-		struct snapshot_s
-		{
-			playerState_s ps;
-		};
-
-		struct cg_s
-		{
-			char __pad0[18680];
-			snapshot_s* nextSnap;
-			char __pad1[582400];
-			int unk_601088;
-			int renderingThirdPerson;
-			char __pad2[378580];
-			int unk_979676;
-			char __pad3[16];
-			int unk_979696;
-		};
-
-		static_assert(offsetof(cg_s, nextSnap) == 18680);
-		static_assert(offsetof(cg_s, unk_601088) == 601088);
-		static_assert(offsetof(cg_s, renderingThirdPerson) == 601092);
-		static_assert(offsetof(cg_s, unk_979676) == 979676);
-		static_assert(offsetof(cg_s, unk_979696) == 979696);
-
-		struct pmove_t
-		{
-			playerState_s* ps;
-			usercmd_s cmd;
-			usercmd_s oldcmd;
-			int tracemask;
-			int numtouch;
-			int touchents[32];
-			Bounds bounds;
-		};
-
-		static_assert(offsetof(pmove_t, touchents) == 144);
-
-		struct pml_t
-		{
-			float forward[3];
-			float right[3];
-			float up[3];
-			float frametime;
-		};
-
-		struct clientHeader_t
-		{
-			int state;
-			char __pad0[44];
-			netadr_s remoteAddress;
-		}; // size = ?
-
-		struct client_t
-		{
-			clientHeader_t header;
-			char __pad0[265164];
-			int reliableSequence;
-			int reliableAcknowledge;
-			char __pad1[397928];
-			gentity_s* gentity;
-			char name[32];
-			char __pad5[348752];
-		}; // size = 1011960
-
-		static_assert(sizeof(client_t) == 1011960);
-
-		struct XZone
-		{
-			char __pad0[32];
-			char name[64];
-			char __pad1[408];
-		};
-
-		static_assert(sizeof(XZone) == 504);
-	}
-
-	namespace sp
+	struct SprintState
 	{
-		struct gclient_s
-		{
-			char __pad[59200];
-			int flags; // 59200
-		};
-
-		struct gentity_s
-		{
-			char __pad0[280];
-			gclient_s* client; // 280
-			char __pad1[76];
-			int flags; // 364
-		};
-
-		struct playerState_s
-		{
-		};
-
-		struct XZone
-		{
-			char __pad0[32];
-			char name[64];
-			char __pad1[128];
-		};
-
-		static_assert(sizeof(XZone) == 224);
-	}
-
-	union playerState_s
-	{
-		sp::playerState_s* sp;
-		mp::playerState_s* mp;
+		int sprintButtonUpRequired;
+		int sprintDelay;
+		int lastSprintStart;
+		int lastSprintEnd;
+		int sprintStartMaxLength;
 	};
 
-	struct GfxWorldDpvsPlanes
+	struct playerState_s_SprintState
 	{
-		int cellCount;
-		void* planes;
-		unsigned short* nodes;
-		unsigned int* sceneEntCellBits;
-	}; assert_sizeof(GfxWorldDpvsPlanes, 32);
-
-	struct sunflare_t
-	{
-		bool hasValidData;
-		Material* spriteMaterial;
-		Material* flareMaterial;
-		float spriteSize;
-		float flareMinSize;
-		float flareMinDot;
-		float flareMaxSize;
-		float flareMaxDot;
-		float flareMaxAlpha;
-		int flareFadeInTime;
-		int flareFadeOutTime;
-		float blindMinDot;
-		float blindMaxDot;
-		float blindMaxDarken;
-		int blindFadeInTime;
-		int blindFadeOutTime;
-		float glareMinDot;
-		float glareMaxDot;
-		float glareMaxLighten;
-		int glareFadeInTime;
-		int glareFadeOutTime;
-		float sunFxPosition[3];
-	}; assert_sizeof(sunflare_t, 112);
-
-	typedef void* umbraTomePtr_t;
-
-	struct GfxBuildInfo
-	{
-		const char* args0;
-		const char* args1;
-		const char* buildStartTime;
-		const char* buildEndTime;
-	}; assert_sizeof(GfxBuildInfo, 32);
-
-	struct GfxStaticModelDrawInst
-	{
-		char __pad0[56];
-		XModel* __ptr64 model;
-		unsigned short cullDist;
-		unsigned short flags;
-		unsigned short lightingHandle;
-		unsigned short staticModelId;
-		unsigned short primaryLightEnvIndex;
-		short unk0;
-		char unk1; // lod related
-		unsigned char reflectionProbeIndex;
-		unsigned char firstMtlSkinIndex;
-		unsigned char sunShadowFlags;
-	}; assert_sizeof(GfxStaticModelDrawInst, 80);
-	assert_offsetof(GfxStaticModelDrawInst, model, 56);
-	assert_offsetof(GfxStaticModelDrawInst, cullDist, 64);
-	assert_offsetof(GfxStaticModelDrawInst, flags, 66);
-	assert_offsetof(GfxStaticModelDrawInst, lightingHandle, 68);
-	assert_offsetof(GfxStaticModelDrawInst, primaryLightEnvIndex, 72);
-	assert_offsetof(GfxStaticModelDrawInst, reflectionProbeIndex, 77); // maybe wrong
-	assert_offsetof(GfxStaticModelDrawInst, firstMtlSkinIndex, 78);
-
-	struct GfxStaticModelVertexLighting
-	{
-		unsigned char visibility[4];
-		unsigned short ambientColorFloat16[4];
-		unsigned short highlightColorFloat16[4];
-	}; assert_sizeof(GfxStaticModelVertexLighting, 20);
-
-	struct GfxStaticModelVertexLightingInfo
-	{
-		GfxStaticModelVertexLighting* lightingValues;
-		ID3D11Buffer* lightingValuesVb;
-		int numLightingValues;
+		char __pad0[440];
+		SprintState sprintState; // 440
+		char __pad1[88]; // 460
+		PlayerActiveWeaponState weaponState[2]; // 548
 	};
 
-	struct GfxStaticModelLightmapInfo
+	struct playerState_s
 	{
-		float offset[2];
-		float scale[2];
-		unsigned int lightmapIndex;
+		char clientNum;
+		char __pad0[1];
+		char pm_type;
+		char __pad1[44];
+		int otherFlags;
+		char __pad2[28];
+		int pm_time;
+		int pm_flags;
+		int eFlags;
+		int linkFlags;
+		char __pad3[24];
+		vec3_t origin;
+		vec3_t velocity;
+		char __pad4[312];
+		SprintState sprintState;
+		char __pad5[72];
+		PlayerActiveWeaponState weaponState[2];
+		Weapon weaponsEquipped[15]; // 604
+		PlayerEquippedWeaponState weapEquippedData[15]; // 664
+		PlayerWeaponCommonState weapCommon; // 904
 	};
 
-	struct GfxStaticModelGroundLightingInfo
+	static_assert(offsetof(playerState_s, pm_type) == 2);
+	//static_assert(offsetof(playerState_s, groundEntityNum) == 34);
+	static_assert(offsetof(playerState_s, otherFlags) == 48);
+	static_assert(offsetof(playerState_s, pm_time) == 80);
+	static_assert(offsetof(playerState_s, pm_flags) == 84);
+	static_assert(offsetof(playerState_s, eFlags) == 88);
+	static_assert(offsetof(playerState_s, linkFlags) == 92);
+	static_assert(offsetof(playerState_s, origin) == 120);
+	static_assert(offsetof(playerState_s, velocity) == 132);
+	static_assert(offsetof(playerState_s, sprintState) == 456);
+	static_assert(offsetof(playerState_s, weaponState) == 548); // not 564
+
+	struct snapshot_s
 	{
-		unsigned short groundLighting[4]; // float16
+		playerState_s ps;
 	};
 
-	struct GfxStaticModelLightGridLightingInfo
+	enum CubemapShot : std::int32_t
 	{
-		unsigned short colorFloat16[4];
-		int a;
-		float b;
-		char __pad1[8];
+		CUBEMAPSHOT_NONE = 0x0,
+		CUBEMAPSHOT_RIGHT = 0x1,
+		CUBEMAPSHOT_LEFT = 0x2,
+		CUBEMAPSHOT_BACK = 0x3,
+		CUBEMAPSHOT_FRONT = 0x4,
+		CUBEMAPSHOT_UP = 0x5,
+		CUBEMAPSHOT_DOWN = 0x6,
+		CUBEMAPSHOT_COUNT = 0x7,
 	};
 
-	union GfxStaticModelLighting
+	struct GfxViewport
 	{
-		GfxStaticModelVertexLightingInfo vertexLightingInfo;
-		GfxStaticModelLightmapInfo modelLightmapInfo;
-		GfxStaticModelGroundLightingInfo modelGroundLightingInfo;
-		GfxStaticModelLightGridLightingInfo modelLightGridLightingInfo;
-	}; assert_sizeof(GfxStaticModelLighting, 24);
+		__int16 x;
+		__int16 y;
+		__int16 width;
+		__int16 height;
+	};
 
-	struct GfxWorldDpvsStatic
+	struct RefdefView
 	{
-		unsigned int smodelCount; // 0
-		unsigned int subdivVertexLightingInfoCount; // 4
-		unsigned int staticSurfaceCount; // 8
-		unsigned int litOpaqueSurfsBegin; // 12
-		unsigned int litOpaqueSurfsEnd; // 16
-		unsigned int unkSurfsBegin;
-		unsigned int unkSurfsEnd;
-		unsigned int litDecalSurfsBegin; // 28
-		unsigned int litDecalSurfsEnd; // 32
-		unsigned int litTransSurfsBegin; // 36
-		unsigned int litTransSurfsEnd; // 40
-		unsigned int shadowCasterSurfsBegin; // 44
-		unsigned int shadowCasterSurfsEnd; // 48
-		unsigned int emissiveSurfsBegin; // 52
-		unsigned int emissiveSurfsEnd; // 56
-		unsigned int smodelVisDataCount; // 60
-		unsigned int surfaceVisDataCount; // 64
-		unsigned int* smodelVisData[4]; // 72 80 88 96
-		unsigned int* smodelUnknownVisData[27];
-		unsigned int* surfaceVisData[4]; // 320 328 336 344
-		unsigned int* surfaceUnknownVisData[27];
-		unsigned int* smodelUmbraVisData[4]; // 568 576 584 592
-		unsigned int* surfaceUmbraVisData[4]; // 600 608 616 624
-		unsigned int* lodData; // 632
-		unsigned int* tessellationCutoffVisData; // 640
-		unsigned int* sortedSurfIndex; // 648
-		void* smodelInsts; // 656
-		void* surfaces; // 664
-		void* surfacesBounds; // 672
-		GfxStaticModelDrawInst* smodelDrawInsts; // 680
-		unsigned int* unknownSModelVisData1; // 688
-		unsigned int* unknownSModelVisData2; // 696
-		GfxStaticModelLighting* smodelLighting; // 704 (array)
-		void* subdivVertexLighting; // 712 (array)
-		GfxDrawSurf* surfaceMaterials; // 720
-		unsigned int* surfaceCastsSunShadow; // 728
-		unsigned int sunShadowOptCount; // 736
-		unsigned int sunSurfVisDataCount; // 740
-		unsigned int* surfaceCastsSunShadowOpt; // 744
-		void* surfaceDeptAndSurf; // 752
-		void* constantBuffersLit; // 760
-		void* constantBuffersAmbient; // 768
-		int usageCount; // 776
-	}; assert_sizeof(GfxWorldDpvsStatic, 784);
-	assert_offsetof(GfxWorldDpvsStatic, smodelVisData[0], 72);
-	assert_offsetof(GfxWorldDpvsStatic, surfaceVisData[0], 320);
-	assert_offsetof(GfxWorldDpvsStatic, smodelUmbraVisData[0], 568);
-	assert_offsetof(GfxWorldDpvsStatic, tessellationCutoffVisData, 640);
-	assert_offsetof(GfxWorldDpvsStatic, smodelDrawInsts, 680);
-	assert_offsetof(GfxWorldDpvsStatic, smodelLighting, 704);
-	assert_offsetof(GfxWorldDpvsStatic, sunSurfVisDataCount, 740);
-	assert_offsetof(GfxWorldDpvsStatic, constantBuffersAmbient, 768);
+		float tanHalfFovX;
+		float tanHalfFovY;
+		float unk[2];
+		float org[3];
+		float axis[3][3];
+	};
 
-	struct GfxWorld
+	struct refdef_t_correct
 	{
-		const char* name; // 0
-		const char* baseName; // 8
-		unsigned int bspVersion; // 16
-		int planeCount; // 20
-		int nodeCount; // 24
-		unsigned int surfaceCount; // 28
-		int skyCount; // 32
-		void* skies; // 40
-		unsigned int portalGroupCount; // 48
-		unsigned int lastSunPrimaryLightIndex; // 52
-		unsigned int primaryLightCount; // 56
-		unsigned int primaryLightEnvCount; // 60
-		unsigned int sortKeyLitDecal; // 64
-		unsigned int sortKeyEffectDecal; // 68
-		unsigned int sortKeyTopDecal; // 72
-		unsigned int sortKeyEffectAuto; // 76
-		unsigned int sortKeyDistortion; // 80
-		unsigned int sortKeyUnknown; // 84
-		unsigned int sortKeyUnknown2; // 88
-		char __pad0[4]; // 92
-		GfxWorldDpvsPlanes dpvsPlanes; // 96
-		void* aabbTreeCounts; // 128
-		void* aabbTrees; // 136
-		void* cells; // 144
-		void* portalGroup; // 152
-		int unk_vec4_count_0; // 160
-		char __pad1[4];
-		vec4_t* unk_vec4_0; // 168
+		GfxViewport displayViewport;
+		int time;
+		int frameTime;
+		RefdefView view;
+		float viewOffset[3];
+		float viewOffsetPrev[3];
+	};
 
-		//GfxWorldDraw draw; // 176
-		//GfxLightGrid lightGrid; // 432
-		char __pad2[1336]; // 176
+	struct refdef_t
+	{
+		char __pad0[0x10];
+		float fovX;
+		float fovY;
+		char __pad1[0x8];
+		vec3_t org;
+		vec3_t axis[3];
+	};
 
-		int modelCount; // 1512
-		void* models; // 1520
-		vec3_t mins1;
-		vec3_t maxs1;
-		vec3_t mins2;
-		vec3_t maxs2;
-		unsigned int checksum;
-		int materialMemoryCount; // 1580
-		void* materialMemory; // 1584
-		sunflare_t sun; // 1592
-		float outdoorLookupMatrix[4][4];
-		GfxImage* outdoorImage; // 1768
-		unsigned int* cellCasterBits; // 1776
-		unsigned int* cellHasSunLitSurfsBits; // 1784
-		void* sceneDynModel; // 1792
-		void* sceneDynBrush; // 1800
-		unsigned int* primaryLightEntityShadowVis; // 1808
-		unsigned int* primaryLightDynEntShadowVis[2]; // 1816 1824
-		unsigned short* nonSunPrimaryLightForModelDynEnt; // 1832
-		void* shadowGeom; // 1840
-		void* shadowGeomOptimized; // 1848
-		void* lightRegion; // 1856
+	struct cg_s_ps
+	{
+		playerState_s_SprintState predictedPlayerState;
+	};
 
-		GfxWorldDpvsStatic dpvs; // 1864
-		//GfxWorldDpvsDynamic dpvsDyn; // 2648
-		char __pad3[96]; // 2648
+	struct cg_s
+	{
+		char __pad0[18644];
+		CubemapShot cubemapShot;
+		int cubemapSize;
+		char __pad4[28];
+		snapshot_s* nextSnap;
+		char __pad1[582400];
+		int unk_601088;
+		int renderingThirdPerson;
+		char __pad5[24];
+		refdef_t_correct refdef;
+		char __pad2[378452];
+		int unk_979676;
+		char __pad3[16];
+		int unk_979696;
+	};
 
-		unsigned int mapVtxChecksum; // 2744
-		unsigned int heroOnlyLightCount; // 2748
-		void* heroOnlyLights; // 2752
-		unsigned char fogTypesAllowed; // 2760
-		unsigned int umbraTomeSize; // 2764
-		char* umbraTomeData; // 2768
-		umbraTomePtr_t umbraTomePtr; // 2776
-		unsigned int mdaoVolumesCount; // 2784
-		void* mdaoVolumes; // 2792
-		char __pad4[32];
-		GfxBuildInfo buildInfo; // 2832
-	}; assert_sizeof(GfxWorld, 0xB30);
-	assert_offsetof(GfxWorld, skyCount, 32);
-	assert_offsetof(GfxWorld, skies, 40);
-	assert_offsetof(GfxWorld, dpvsPlanes, 96);
-	assert_offsetof(GfxWorld, aabbTreeCounts, 128);
-	assert_offsetof(GfxWorld, cells, 144);
-	assert_offsetof(GfxWorld, portalGroup, 152);
-	assert_offsetof(GfxWorld, unk_vec4_count_0, 160);
-	assert_offsetof(GfxWorld, unk_vec4_0, 168);
-	assert_offsetof(GfxWorld, __pad2, 176);
-	//assert_offsetof(GfxWorld, lightGrid, 432);
-	assert_offsetof(GfxWorld, modelCount, 1512);
-	assert_offsetof(GfxWorld, models, 1520);
-	assert_offsetof(GfxWorld, materialMemoryCount, 1580);
-	assert_offsetof(GfxWorld, materialMemory, 1584);
-	assert_offsetof(GfxWorld, sun, 1592);
-	assert_offsetof(GfxWorld, outdoorImage, 1768);
-	assert_offsetof(GfxWorld, cellCasterBits, 1776);
-	assert_offsetof(GfxWorld, cellHasSunLitSurfsBits, 1784);
-	assert_offsetof(GfxWorld, dpvs, 1864);
-	assert_offsetof(GfxWorld, __pad3, 2648);
-	assert_offsetof(GfxWorld, heroOnlyLightCount, 2748);
-	assert_offsetof(GfxWorld, heroOnlyLights, 2752);
-	assert_offsetof(GfxWorld, umbraTomeSize, 2764);
-	assert_offsetof(GfxWorld, umbraTomeData, 2768);
-	assert_offsetof(GfxWorld, umbraTomePtr, 2776);
-	assert_offsetof(GfxWorld, mdaoVolumesCount, 2784);
-	assert_offsetof(GfxWorld, mdaoVolumes, 2792);
-	assert_offsetof(GfxWorld, mdaoVolumes, 2792);
-	assert_offsetof(GfxWorld, buildInfo, 2832);
+	static_assert(offsetof(cg_s, cubemapShot) == 18644);
+	static_assert(offsetof(cg_s, cubemapSize) == 18648);
+	static_assert(offsetof(cg_s, nextSnap) == 18680);
+	static_assert(offsetof(cg_s, unk_601088) == 601088);
+	static_assert(offsetof(cg_s, renderingThirdPerson) == 601092);
+	static_assert(offsetof(cg_s, refdef) == 601120);
+	static_assert(offsetof(cg_s, unk_979676) == 979676);
+	static_assert(offsetof(cg_s, unk_979696) == 979696);
+
+	struct pmove_t
+	{
+		playerState_s* ps;
+		usercmd_s cmd;
+		usercmd_s oldcmd;
+		int tracemask;
+		int numtouch;
+		int touchents[32];
+		Bounds bounds;
+	};
+
+	static_assert(offsetof(pmove_t, touchents) == 144);
+
+	struct pml_t
+	{
+		float forward[3];
+		float right[3];
+		float up[3];
+		float frametime;
+	};
+
+	struct clientHeader_t
+	{
+		int state;
+		char __pad0[44];
+		netadr_s remoteAddress;
+	}; // size = ?
+
+	struct client_t
+	{
+		clientHeader_t header;	// 0
+		char __pad0[265164];	// 68
+		int reliableSequence;	// 265232
+		int reliableAcknowledge;// 265236
+		char __pad1[397928];	// 265240
+		gentity_s* gentity;		// 663168
+		char name[32];			// 663176
+		int lastPacketTime;		// 663208
+		char __pad5[348748];	// 636212
+	}; // size = 1011960
+
+	static_assert(sizeof(client_t) == 1011960);
+	static_assert(offsetof(client_t, __pad0) == 0x44);
+
+	struct DObj
+	{
+		char __pad0[15];
+		unsigned char numModels;
+		char __pad1[199];
+		XModel* models;
+	}; 
+		
+	static_assert(offsetof(DObj, models) == 216);
+
+	
+
+	struct Glyph
+	{
+		unsigned short letter;
+		char x0;
+		char y0;
+		char dx;
+		char pixelWidth;
+		char pixelHeight;
+		float s0;
+		float t0;
+		float s1;
+		float t1;
+	};
+
+	struct Font_s
+	{
+		const char* fontName;
+		int pixelHeight;
+		int glyphCount;
+		Material* material;
+		Material* glowMaterial;
+		Glyph* glyphs;
+	};
 
 	struct DB_AuthSignature
 	{
@@ -2846,4 +2079,404 @@ namespace game
 			HksError m_error;
 		};
 	}
+
+	struct ClientVoicePacket_t
+	{
+		char data[256];
+		int dataSize;
+	};
+
+	struct voiceCommunication_t
+	{
+		ClientVoicePacket_t voicePackets[10];	// 0
+		int voicePacketCount;					// 2600
+		int voicePacketLastTransmit;			// 2604
+		int packetsPerSec;
+		int packetsPerSecStart;
+	};
+
+	struct VoicePacket_t
+	{
+		char talker;
+		char data[256];
+		int dataSize;
+	};
+
+	enum clientState_t
+	{
+		CS_FREE = 0x0,
+		CS_ZOMBIE = 0x1,
+		CS_RECONNECTING = 0x2,
+		CS_CONNECTED = 0x3,
+		CS_CLIENTLOADING = 0x4,
+		CS_ACTIVE = 0x5,
+	};
+
+	struct netProfilePacket_t
+	{
+		int iTime;
+		int iSize;
+		int bFragment;
+	};
+
+	struct netProfileStream_t
+	{
+		netProfilePacket_t packets[60];
+		int iCurrPacket;
+		int iBytesPerSecond;
+		int iLastBPSCalcTime;
+		int iCountedPackets;
+		int iCountedFragments;
+		int iFragmentPercentage;
+		int iLargestPacket;
+		int iSmallestPacket;
+	};
+
+	struct netProfileInfo_t
+	{
+		netProfileStream_t send;
+		netProfileStream_t recieve;
+	};
+
+	struct netchan_t
+	{
+		int outgoingSequence;
+		netsrc_t sock;
+		int dropped;
+		int incomingSequence;
+		netadr_s remoteAddress;
+		int fragmentSequence;
+		int fragmentLength;
+		char* fragmentBuffer;
+		int fragmentBufferSize;
+		int unsentFragments;
+		int unsentFragmentStart;
+		int unsentLength;
+		char* unsentBuffer;
+		int unsentBufferSize;
+		netProfileInfo_t prof;
+	};
+
+	struct clientConnection_t
+	{
+		int qport;
+		int clientNum;
+		int lastPacketTime;
+		netadr_s serverAddress;
+		int connectLastSendTime;
+		int connectPacketCount;
+		char serverMessage[256];
+		int challenge;
+		int checksumFeed;
+		int reliableSequence;
+		int reliableAcknowledge;
+		char reliableCommands[128][1024];
+		int serverMessageSequence;
+		int serverCommandSequence;
+		int lastExecutedServerCommand;
+		char serverCommands[128][1024];
+		bool isServerRestarting;
+		netchan_t netchan;
+		char netchanOutgoingBuffer[2048];
+		char netchanIncomingBuffer[131072];
+		netProfileInfo_t OOBProf;
+		unsigned int statPacketsToSend;
+		int statPacketSendTime[31];
+		unsigned int currentGamestatePacket;
+	}; static_assert(offsetof(clientConnection_t, reliableSequence) == 0x130, "not at this offset");
+
+	struct infoParm_t
+	{
+		const char* name;
+		int clearSolid;
+		int surfaceFlags;
+		int contents;
+		int toolFlags;
+	};
+
+	struct fake_centity_s
+	{
+		int number;
+		char _pad0[3732];
+		float alias1;
+		float alias2;
+		float alias3;
+	};
+
+	assert_offsetof(fake_centity_s, alias1, 3736);
+	assert_offsetof(fake_centity_s, alias2, 3740);
+	assert_offsetof(fake_centity_s, alias3, 3744);
+
+	struct fake_entlist
+	{
+		char _pad0[7608];
+		int perk;
+	}; assert_offsetof(fake_entlist, perk, 7608);
+
+	union OmnvarValue
+	{
+		bool enabled;
+		int integer;
+		unsigned int time;
+		float value;
+		unsigned int ncsString;
+	};
+
+	enum OmnvarType
+	{
+		OMNVAR_TYPE_INVALID = 0x0,
+		OMNVAR_TYPE_BOOL = 0x1,
+		OMNVAR_TYPE_FLOAT = 0x2,
+		OMNVAR_TYPE_INT = 0x3,
+		OMNVAR_TYPE_TIME = 0x4,
+		OMNVAR_TYPE_NCS_LUI = 0x5,
+	};
+
+	struct __declspec(align(8)) OmnvarDef
+	{
+		const char* name;
+		char flags;
+		OmnvarType type;
+		OmnvarValue initial;
+		const char* ncsString;
+		int offset;
+		int numbits;
+		int minvalue;
+		int maxvalue;
+		int row;
+	};
+
+	struct OmnvarData
+	{
+		unsigned int timeModified;
+		OmnvarValue current;
+	};
+
+	enum weapAnimFiles_t : std::int32_t
+	{
+		WEAP_ANIM_INVALID = -1,
+		WEAP_ANIM_ROOT = 0,
+		WEAP_ANIM_IDLE = 1,
+		WEAP_ANIM_EMPTY_IDLE = 2,
+		WEAP_ANIM_FIRE = 3,
+		WEAP_ANIM_HOLD_FIRE = 4,
+		WEAP_ANIM_LASTSHOT = 5,
+		WEAP_ANIM_RECHAMBER = 6,
+		WEAP_ANIM_GRENADE_PRIME = 7,
+		WEAP_ANIM_GRENADE_PRIME_READY_TO_THROW = 8,
+		WEAP_ANIM_MELEE_SWIPE = 9,
+		WEAP_ANIM_MELEE_HIT = 10,
+		WEAP_ANIM_MELEE_FATAL = 11,
+		WEAP_ANIM_MELEE_MISS = 12,
+		WEAP_ANIM_MELEE_VICTIM_CROUCHING_HIT = 13,
+		WEAP_ANIM_MELEE_VICTIM_CROUCHING_FATAL = 14,
+		WEAP_ANIM_MELEE_VICTIM_CROUCHING_MISS = 15,
+		WEAP_ANIM_MELEE_ALT_STANDING = 16,
+		WEAP_ANIM_MELEE_ALT_CROUCHING = 17,
+		WEAP_ANIM_MELEE_ALT_PRONE = 18,
+		WEAP_ANIM_MELEE_ALT_JUMPING = 19,
+		WEAP_ANIM_MELEE_ALT_STANDING_VICTIM_CROUCHING = 20,
+		WEAP_ANIM_MELEE_ALT_CROUCHING_VICTIM_CROUCHING = 21,
+		WEAP_ANIM_MELEE_ALT_PRONE_VICTIM_CROUCHING = 22,
+		WEAP_ANIM_MELEE_ALT_JUMPING_VICTIM_CROUCHING = 23,
+		WEAP_ANIM_RELOAD = 24,
+		WEAP_ANIM_RELOAD_EMPTY = 25,
+		WEAP_ANIM_RELOAD_START = 26,
+		WEAP_ANIM_RELOAD_END = 27,
+		WEAP_ANIM_FAST_RELOAD = 28,
+		WEAP_ANIM_FAST_RELOAD_EMPTY = 29,
+		WEAP_ANIM_FAST_RELOAD_START = 30,
+		WEAP_ANIM_FAST_RELOAD_END = 31,
+		WEAP_ANIM_DUALMAG_RELOAD = 32,
+		WEAP_ANIM_DUALMAG_RELOAD_EMPTY = 33,
+		WEAP_ANIM_SPEED_RELOAD = 34,
+		WEAP_ANIM_RELOAD_FROM_ALT = 35,
+		WEAP_ANIM_RAISE = 36,
+		WEAP_ANIM_FIRST_RAISE = 37,
+		WEAP_ANIM_BREACH_RAISE = 38,
+		WEAP_ANIM_DROP = 39,
+		WEAP_ANIM_ALT_RAISE = 40,
+		WEAP_ANIM_ALT_DROP = 41,
+		WEAP_ANIM_ALT_OVERRIDE = 42,
+		WEAP_ANIM_QUICK_RAISE = 43,
+		WEAP_ANIM_QUICK_DROP = 44,
+		WEAP_ANIM_EMPTY_RAISE = 45,
+		WEAP_ANIM_EMPTY_DROP = 46,
+		WEAP_ANIM_HYBRID_SIGHT_ON = 47,
+		WEAP_ANIM_HYBRID_SIGHT_OFF = 48,
+		WEAP_ANIM_SPRINT_IN = 49,
+		WEAP_ANIM_SPRINT_IN_FROM_SLIDE = 50,
+		WEAP_ANIM_SPRINT_IN_CANCEL = 51,
+		WEAP_ANIM_SPRINT_LOOP = 52,
+		WEAP_ANIM_SPRINT_OUT = 53,
+		WEAP_ANIM_SPRINTANDFIRE_IN = 54,
+		WEAP_ANIM_SPRINTANDFIRE_LOOP = 55,
+		WEAP_ANIM_SPRINTANDFIRE_OUT = 56,
+		WEAP_ANIM_STUNNED_START = 57,
+		WEAP_ANIM_STUNNED_LOOP = 58,
+		WEAP_ANIM_STUNNED_END = 59,
+		WEAP_ANIM_THROWBACK = 60,
+		WEAP_ANIM_DETONATE = 61,
+		WEAP_ANIM_NIGHTVISION_WEAR = 62,
+		WEAP_ANIM_NIGHTVISION_REMOVE = 63,
+		WEAP_ANIM_ADS_FIRE = 64,
+		WEAP_ANIM_ADS_LASTSHOT = 65,
+		WEAP_ANIM_ADS_RECHAMBER = 66,
+		WEAP_ANIM_BLAST_FRONT = 67,
+		WEAP_ANIM_BLAST_RIGHT = 68,
+		WEAP_ANIM_BLAST_BACK = 69,
+		WEAP_ANIM_BLAST_LEFT = 70,
+		WEAP_ANIM_SLIDE_IN = 71,
+		WEAP_ANIM_SLIDE_LOOP = 72,
+		WEAP_ANIM_SLIDE_OUT_TO_SPRINT = 73,
+		WEAP_ANIM_SLIDE_OUT = 74,
+		WEAP_ANIM_SLIDE_AND_FIRE_IN = 75,
+		WEAP_ANIM_SLIDE_AND_FIRE_LOOP = 76,
+		WEAP_ANIM_SLIDE_AND_FIRE_OUT = 77,
+		WEAP_ANIM_HIGH_JUMP_IN = 78,
+		WEAP_ANIM_HIGH_JUMP_DROP_IN = 79,
+		WEAP_ANIM_HIGH_JUMP_DROP_LOOP = 80,
+		WEAP_ANIM_HIGH_JUMP_DROP_LAND = 81,
+		WEAP_ANIM_DODGE_GROUND_BACK = 82,
+		WEAP_ANIM_DODGE_GROUND_LEFT = 83,
+		WEAP_ANIM_DODGE_GROUND_RIGHT = 84,
+		WEAP_ANIM_DODGE_AIR_FORWARD = 85,
+		WEAP_ANIM_DODGE_AIR_BACK = 86,
+		WEAP_ANIM_DODGE_AIR_LEFT = 87,
+		WEAP_ANIM_DODGE_AIR_RIGHT = 88,
+		WEAP_ANIM_LAND_DIP = 89,
+		WEAP_ANIM_RECOIL_SETTLE = 90,
+		WEAP_ANIM_SWIM_LOOP = 91,
+		WEAP_ANIM_MANTLE_UP_64 = 92,
+		WEAP_ANIM_MANTLE_UP_56 = 93,
+		WEAP_ANIM_MANTLE_UP_48 = 94,
+		WEAP_ANIM_MANTLE_UP_40 = 95,
+		WEAP_ANIM_MANTLE_UP_32 = 96,
+		WEAP_ANIM_MANTLE_UP_24 = 97,
+		WEAP_ANIM_MANTLE_UP_16 = 98,
+		WEAP_ANIM_MANTLE_OVER_64 = 99,
+		WEAP_ANIM_MANTLE_OVER_56 = 100,
+		WEAP_ANIM_MANTLE_OVER_48 = 101,
+		WEAP_ANIM_MANTLE_OVER_40 = 102,
+		WEAP_ANIM_MANTLE_OVER_32 = 103,
+		WEAP_ANIM_MANTLE_OVER_24 = 104,
+		WEAP_ANIM_MANTLE_OVER_16 = 105,
+		WEAP_ANIM_GOLIATH_ENTRY = 106,
+		WEAP_ANIM_OFFHAND_SWITCH = 107,
+		WEAP_ANIM_HEAT_COOLDOWN_IN = 108,
+		WEAP_ANIM_HEAT_COOLDOWN_OUT = 109,
+		WEAP_ANIM_OVERHEAT_OUT = 110,
+		WEAP_ANIM_SCRIPTED = 111,
+		WEAP_ANIM_INSPECTION = 112,
+		WEAP_ANIM_RELOAD_MULTIPLE_1 = 113,
+		WEAP_ANIM_RELOAD_MULTIPLE_2 = 114,
+		WEAP_ANIM_RELOAD_MULTIPLE_3 = 115,
+		WEAP_ANIM_RELOAD_MULTIPLE_4 = 116,
+		WEAP_ANIM_RELOAD_MULTIPLE_5 = 117,
+		WEAP_ANIM_RELOAD_MULTIPLE_6 = 118,
+		WEAP_ANIM_RELOAD_MULTIPLE_7 = 119,
+		WEAP_ANIM_RELOAD_MULTIPLE_8 = 120,
+		WEAP_ANIM_RELOAD_MULTIPLE_FAST_1 = 121,
+		WEAP_ANIM_RELOAD_MULTIPLE_FAST_2 = 122,
+		WEAP_ANIM_RELOAD_MULTIPLE_FAST_3 = 123,
+		WEAP_ANIM_RELOAD_MULTIPLE_FAST_4 = 124,
+		WEAP_ANIM_RELOAD_MULTIPLE_FAST_5 = 125,
+		WEAP_ANIM_RELOAD_MULTIPLE_FAST_6 = 126,
+		WEAP_ANIM_RELOAD_MULTIPLE_FAST_7 = 127,
+		WEAP_ANIM_RELOAD_MULTIPLE_FAST_8 = 128,
+		WEAP_ANIM_ADS_UP = 129,
+		WEAP_ANIM_ADS_DOWN = 130,
+		WEAP_ANIM_RECOIL = 131,
+		WEAP_ALT_ANIM_ADJUST = 132,
+		WEAP_ANIM_ADDITIVE_ADS_ROOT = 133,
+		WEAP_ANIM_ADDITIVE_ADS_UP = 134,
+		WEAP_ANIM_ADDITIVE_HYBRID_SIGHT_UP_ROOT = 135,
+		WEAP_ANIM_ADDITIVE_HYBRID_SIGHT_UP = 136,
+		WEAP_ANIM_ADDITIVE_DRAG_LEFT_ROOT = 137,
+		WEAP_ANIM_ADDITIVE_DRAG_LEFT = 138,
+		WEAP_ANIM_ADDITIVE_DRAG_RIGHT_ROOT = 139,
+		WEAP_ANIM_ADDITIVE_DRAG_RIGHT = 140,
+		WEAP_ANIM_ADDITIVE_DRAG_UP_ROOT = 141,
+		WEAP_ANIM_ADDITIVE_DRAG_UP = 142,
+		WEAP_ANIM_ADDITIVE_DRAG_DOWN_ROOT = 143,
+		WEAP_ANIM_ADDITIVE_DRAG_DOWN = 144,
+		WEAP_ANIM_ADDITIVE_SWIM_FORWARD_ROOT = 145,
+		WEAP_ANIM_ADDITIVE_SWIM_FORWARD = 146,
+		WEAP_ANIM_ADDITIVE_SWIM_BACKWARD_ROOT = 147,
+		WEAP_ANIM_ADDITIVE_SWIM_BACKWARD = 148,
+		WEAP_ANIM_ADDITIVE_JUMP_ROOT = 149,
+		WEAP_ANIM_ADDITIVE_JUMP = 150,
+		WEAP_ANIM_ADDITIVE_JUMP_BOOST = 151,
+		WEAP_ANIM_ADDITIVE_JUMP_LAND_ROOT = 152,
+		WEAP_ANIM_ADDITIVE_JUMP_LAND = 153,
+		WEAP_ANIM_ADDITIVE_JUMP_LAND_HEAVY = 154,
+		WEAP_ANIM_ADDITIVE_WALK_ROOT = 155,
+		WEAP_ANIM_ADDITIVE_WALK = 156,
+		WEAP_ANIM_ADDITIVE_HEAT_COOLDOWN_LOOP_ROOT = 157,
+		WEAP_ANIM_ADDITIVE_HEAT_COOLDOWN_LOOP = 158,
+		WEAP_ANIM_ADDITIVE_OVERHEAT_IN_ROOT = 159,
+		WEAP_ANIM_ADDITIVE_OVERHEAT_IN = 160,
+		WEAP_ANIM_ADDITIVE_OVERHEAT_LOOP_ROOT = 161,
+		WEAP_ANIM_ADDITIVE_OVERHEAT_LOOP = 162,
+		WEAP_ANIM_ADDITIVE_CRAWL_IN_ROOT = 163,
+		WEAP_ANIM_ADDITIVE_CRAWL_IN = 164,
+		WEAP_ANIM_ADDITIVE_CRAWL_LOOP_ROOT = 165,
+		WEAP_ANIM_ADDITIVE_CRAWL_LOOP = 166,
+		WEAP_ANIM_ADDITIVE_CRAWL_LOOP_BACK_ROOT = 167,
+		WEAP_ANIM_ADDITIVE_CRAWL_LOOP_BACK = 168,
+		WEAP_ANIM_ADDITIVE_CRAWL_LOOP_LEFT_ROOT = 169,
+		WEAP_ANIM_ADDITIVE_CRAWL_LOOP_LEFT = 170,
+		WEAP_ANIM_ADDITIVE_CRAWL_LOOP_RIGHT_ROOT = 171,
+		WEAP_ANIM_ADDITIVE_CRAWL_LOOP_RIGHT = 172,
+		WEAP_ANIM_ADDITIVE_PRONE_DROP_ROOT = 173,
+		WEAP_ANIM_ADDITIVE_PRONE_DROP = 174,
+		WEAP_ANIM_ADDITIVE_EMPTY_ROOT = 175,
+		WEAP_ANIM_ADDITIVE_EMPTY = 176,
+		WEAP_ANIM_ADDITIVE_MANTLE_ROOT = 177,
+		WEAP_ANIM_ADDITIVE_MANTLE = 178,
+		WEAP_ANIM_ADDITIVE_LOW_MANTLE_ROOT = 179,
+		WEAP_ANIM_ADDITIVE_MANTLE_UP_24 = 180,
+		WEAP_ANIM_ADDITIVE_MANTLE_UP_16 = 181,
+		WEAP_ANIM_ADDITIVE_MANTLE_OVER_24 = 182,
+		WEAP_ANIM_ADDITIVE_MANTLE_OVER_16 = 183,
+		WEAP_ANIM_ADDITIVE_SHOT_CHARGE_IN_ROOT = 184,
+		WEAP_ANIM_ADDITIVE_SHOT_CHARGE_IN = 185,
+		WEAP_ANIM_ADDITIVE_SHOT_CHARGE_LOOP_ROOT = 186,
+		WEAP_ANIM_ADDITIVE_SHOT_CHARGE_LOOP = 187,
+		WEAP_ANIM_ADDITIVE_SCRIPTED_ROOT = 188,
+		WEAP_ANIM_ADDITIVE_SCRIPTED = 189,
+		NUM_WEAP_ANIMS = 190,
+	};
+
+	enum CustomizationType
+	{
+		GENDER = 0,
+		SHIRT,
+		HEAD,
+		GLOVES
+	};
+
+	// pulled from IW4
+	struct DrawClipAmmoParams
+	{
+		Material* image;
+	};
+
+	union SoundFlags
+	{
+		struct
+		{
+			std::uint32_t looping : 1;
+			std::uint32_t master : 1;
+			std::uint32_t slave : 1;
+			std::uint32_t full_dry_level : 1;
+			std::uint32_t no_wet_level : 1;
+			std::uint32_t is_3d : 1;
+			std::uint32_t channel : 10;
+			std::uint32_t type : 2;
+			std::uint32_t unk2 : 14; // shape? random_looping?
+		} u;
+
+		std::uint32_t packed;
+	};
 }

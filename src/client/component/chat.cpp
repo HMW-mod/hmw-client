@@ -35,8 +35,11 @@ namespace chat
 			utils::hook::call(0x33EDEC_b, ui_get_font_handle_stub);
 
 			// move chat position on the screen above menu splashes
-			dvars::override::register_vec2("cg_hudChatPosition", 5, 200, 0, 640, game::DVAR_FLAG_SAVED);
+			dvars::override::register_vec2("cg_hudChatPosition", 5, 250, 0, 640, game::DVAR_FLAG_SAVED);
 			dvars::override::register_int("cg_chatHeight", 5, 0, 8, game::DVAR_FLAG_SAVED);
+
+			// events in obituary
+			dvars::register_int("cg_maxObituaryEvents", 7, 0, 12, game::DVAR_FLAG_SAVED, "max events in obituary");
 		}
 	};
 }

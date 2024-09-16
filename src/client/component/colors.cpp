@@ -109,11 +109,11 @@ namespace colors
 
 			if (index == '8')
 			{
-				*color = *reinterpret_cast<DWORD*>(SELECT_VALUE(0xF79D288_b, 0xEA749B4_b));
+				*color = *reinterpret_cast<DWORD*>(0xEA749B4_b);
 			}
 			else if (index == '9')
 			{
-				*color = *reinterpret_cast<DWORD*>(SELECT_VALUE(0xF79D28C_b, 0xEA749B8_b));
+				*color = *reinterpret_cast<DWORD*>(0xEA749B8_b);
 			}
 			else if (index == ':')
 			{
@@ -121,7 +121,7 @@ namespace colors
 			}
 			else if (index == ';')
 			{
-				*color = *reinterpret_cast<DWORD*>(SELECT_VALUE(0xF79D294_b, 0xEA749C0_b));
+				*color = *reinterpret_cast<DWORD*>(0xEA749C0_b);
 			}
 			else if (index == '<')
 			{
@@ -144,20 +144,20 @@ namespace colors
 				return;
 			}
 
-			if (!game::environment::is_sp())
-			{
-				// allows colored name in-game
-				utils::hook::jump(0x5AEDF0_b, com_clean_name_stub, true);
+#ifdef DEBUG
+			// allows colored name in-game
+			utils::hook::jump(0x5AEDF0_b, com_clean_name_stub, true);
+#endif
 
-				// don't apply colors to overhead names
-				utils::hook::call(0xF7B85_b, get_client_name_stub);
+			// don't apply colors to overhead names
+			utils::hook::call(0xF7B85_b, get_client_name_stub);
 
-				// patch I_CleanStr
-				utils::hook::jump(0x5AF2E0_b, i_clean_str_stub, true);
-			}
+			// patch I_CleanStr
+			utils::hook::jump(0x5AF2E0_b, i_clean_str_stub, true);
+			
 
 			// force new colors
-			utils::hook::jump(SELECT_VALUE(0x5B17E0_b, 0x6C9460_b), rb_lookup_color_stub, true);
+			utils::hook::jump(0x6C9460_b, rb_lookup_color_stub, true);
 
 			// add colors
 			add(0, 0, 0); // 0  - Black

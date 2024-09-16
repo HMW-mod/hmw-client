@@ -10,7 +10,7 @@
 #include "fonts.hpp"
 #include "localized_strings.hpp"
 #include "materials.hpp"
-#include "mods.hpp"
+//#include "mods.hpp"
 #include "scheduler.hpp"
 #include "game/demonware/services.hpp"
 
@@ -19,7 +19,7 @@
 
 namespace mods
 {
-	std::optional<std::string> mod_path;
+	//std::optional<std::string> mod_path;
 
 	namespace
 	{
@@ -50,6 +50,7 @@ namespace mods
 			}, scheduler::pipeline::main);
 		}
 
+		/*
 		void full_restart(const std::string& arg)
 		{
 			if (game::environment::is_mp())
@@ -90,8 +91,10 @@ namespace mods
 				filesystem::register_path(path);
 			}
 		}
+		*/
 	}
 
+	/*
 	void set_mod(const std::string& path, bool change_fs_game)
 	{
 		set_filesystem_data(path, change_fs_game);
@@ -116,19 +119,23 @@ namespace mods
 		demonware::set_storage_path(mod_path.value_or(""));
 		utils::hook::invoke<void>(0x4E6B60_b, 0); // read stats
 	}
+	*/
 
 	class component final : public component_interface
 	{
 	public:
 		void post_unpack() override
 		{
+			/*
 			if (!utils::io::directory_exists("mods"))
 			{
 				utils::io::create_directory("mods");
 			}
+			*/
 
-			db_release_xassets_hook.create(SELECT_VALUE(0x1F4DB0_b, 0x399740_b), db_release_xassets_stub);
+			db_release_xassets_hook.create(0x399740_b, db_release_xassets_stub);
 
+			/*
 			dvars::callback::on_new_value("fs_game", [](game::dvar_value* value)
 			{
 				console::warn("fs_game value changed to '%s'\n", value->string);
@@ -211,6 +218,7 @@ namespace mods
 
 				restart();
 			});
+			*/
 		}
 	};
 }

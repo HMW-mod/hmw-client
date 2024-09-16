@@ -5,8 +5,7 @@
 #include "console.hpp"
 #include "filesystem.hpp"
 #include "localized_strings.hpp"
-#include "mods.hpp"
-#include "updater.hpp"
+//#include "mods.hpp"
 
 #include "game/game.hpp"
 
@@ -40,24 +39,32 @@ namespace filesystem
 
 		void fs_startup_stub(const char* name)
 		{
-			console::info("[FS] Startup\n");
+#ifdef DEBUG
+			console::debug("[FS] Startup\n");
+#endif
 
 			initialized = true;
 
-			filesystem::register_path(utils::properties::get_appdata_path() / CLIENT_DATA_FOLDER);
 			filesystem::register_path(L".");
-			filesystem::register_path(L"h1-mod");
+			filesystem::register_path(L"h2m-mod");
+
+			// TODO: enable these for release
+#ifdef DEBUG
+			filesystem::register_path(L"h2m-mod-rawfiles"); // git repo in gamefiles lul
 			filesystem::register_path(L"devraw");
 			filesystem::register_path(L"devraw_shared");
+#endif
 			filesystem::register_path(L"raw_shared");
 			filesystem::register_path(L"raw");
 			filesystem::register_path(L"main");
 
+			/*
 			const auto mod_path = utils::flags::get_flag("mod");
 			if (mod_path.has_value())
 			{
 				mods::set_mod(mod_path.value());
 			}
+			*/
 
 			fs_startup_hook.invoke<void>(name);
 		}
@@ -179,7 +186,9 @@ namespace filesystem
 		{
 			if (can_insert_path(path_))
 			{
-				console::info("[FS] Registering path '%s'\n", path_.generic_string().data());
+#ifdef DEBUG
+				console::debug("[FS] Registering path '%s'\n", path_.generic_string().data());
+#endif
 				get_search_paths_internal().push_front(path_);
 			}
 		}
@@ -200,7 +209,9 @@ namespace filesystem
 			{
 				if (*i == path_)
 				{
+#ifdef DEBUG
 					console::debug("[FS] Unregistering path '%s'\n", path_.generic_string().data());
+#endif
 					i = search_paths.erase(i);
 				}
 				else
@@ -241,12 +252,18 @@ namespace filesystem
 	public:
 		void post_unpack() override
 		{
-			fs_startup_hook.create(SELECT_VALUE(0x40D890_b, 0x189A40_b), fs_startup_stub);
+			fs_startup_hook.create(0x189A40_b, fs_startup_stub);
 
-			utils::hook::jump(SELECT_VALUE(0x42CE00_b, 0x5B3440_b), sys_default_install_path_stub);
+			utils::hook::jump(0x5B3440_b, sys_default_install_path_stub);
 
 			// fs_game flags
-			utils::hook::set<uint32_t>(SELECT_VALUE(0x40D2A5_b, 0x189275_b), 0);
+#ifdef DEBUG
+			const auto new_flag = 0x0;
+#else
+			const auto new_flag = game::DVAR_FLAG_READ;
+#endif
+
+			utils::hook::set<uint32_t>(0x189275_b, new_flag);
 		}
 	};
 }

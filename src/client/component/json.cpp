@@ -1,4 +1,5 @@
 #include <std_include.hpp>
+#ifdef DEBUG
 #include "loader/component_loader.hpp"
 
 #include "component/scheduler.hpp"
@@ -211,3 +212,4 @@ namespace json
 }
 
 REGISTER_COMPONENT(json::component)
+#endif

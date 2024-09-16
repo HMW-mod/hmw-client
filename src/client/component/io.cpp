@@ -1,4 +1,5 @@
 #include <std_include.hpp>
+
 #include "loader/component_loader.hpp"
 
 #include "component/console.hpp"
@@ -20,6 +21,7 @@ namespace io
 {
 	namespace
 	{
+#ifdef DEBUG
 		bool allow_root_io = false;
 
 		void check_path(const std::filesystem::path& path)
@@ -50,6 +52,7 @@ namespace io
 
 			throw std::runtime_error("fs_game is not properly defined");
 		}
+#endif
 
 		void replace(std::string& str, const std::string& from, const std::string& to)
 		{
@@ -69,6 +72,7 @@ namespace io
 	public:
 		void post_unpack() override
 		{
+#ifdef DEBUG
 			allow_root_io = utils::flags::has_flag("allow_root_io");
 			if (allow_root_io)
 			{
@@ -153,6 +157,7 @@ namespace io
 				const auto path = convert_path(args[0].as<std::string>());
 				return utils::io::remove_file(path);
 			});
+#endif
 
 			gsc::function::add("va", [](const gsc::function_args& args)
 			{
