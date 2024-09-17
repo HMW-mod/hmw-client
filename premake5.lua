@@ -1,4 +1,4 @@
-gitVersioningCommand = "git describe --tags --always --abbrev=0"
+gitVersioningCommand = "git describe --tags --dirty --always"
 gitCurrentBranchCommand = "git symbolic-ref -q --short HEAD"
 
 -- Quote the given string input as a C string
@@ -219,7 +219,7 @@ newaction {
 
 dependencies.load()
 
-workspace "hmw-mod"
+workspace "h2m-mod"
 startproject "client"
 location "./build"
 objdir "%{wks.location}/obj"
@@ -228,7 +228,7 @@ targetdir "%{wks.location}/bin/%{cfg.platform}/%{cfg.buildcfg}"
 configurations {"Debug", "Release"}
 
 language "C++"
-cppdialect "C++latest"
+cppdialect "C++20"
 
 architecture "x86_64"
 platforms "x64"
@@ -298,7 +298,7 @@ project "client"
 kind "ConsoleApp"
 language "C++"
 
-targetname "hmw-mod"
+targetname "h2m-mod"
 
 pchheader "std_include.hpp"
 pchsource "src/client/std_include.cpp"
