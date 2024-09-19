@@ -16,7 +16,7 @@ namespace hmw_voice_chat {
 
 	namespace {
 		static constexpr auto MAX_VOICE_PACKET_DATA = 256;
-		static constexpr auto MAX_SERVER_QUEUED_VOICE_PACKETS = 2000;
+		static constexpr auto MAX_SERVER_QUEUED_VOICE_PACKETS = 40;
 		static constexpr std::size_t MAX_CLIENTS = 18;
 
 		game::VoicePacket_t voice_packets[MAX_CLIENTS][MAX_SERVER_QUEUED_VOICE_PACKETS];
@@ -33,7 +33,6 @@ namespace hmw_voice_chat {
 		game::dvar_t* sv_voice_death_chat = nullptr;
 		game::dvar_t* sv_voice_intermission = nullptr;
 		game::dvar_t* sv_voice_all = nullptr;
-		game::dvar_t* sv_mapvote_active = nullptr;
 
 		utils::hook::detour cl_write_voice_packet_hook;
 		utils::hook::detour cl_is_player_talking_hook;
@@ -68,12 +67,6 @@ namespace hmw_voice_chat {
 		{
 			return (sv_voice_death_chat && sv_voice_death_chat->current.enabled);
 		}
-
-		bool sv_mapvote_active_enabled()
-		{
-			return (sv_mapvote_active && sv_mapvote_active->current.enabled);
-		}
-
 
 		int get_max_clients()
 		{
@@ -184,7 +177,7 @@ namespace hmw_voice_chat {
 					}
 
 					// Everyone is in intermission, forward voice_packets to everyone.
-					if ((is_session_state(target_client, game::SESS_STATE_INTERMISSION) || sv_mapvote_active_enabled()) && is_session_state_same(target_client, talker_client)) {
+					if (is_session_state(target_client, game::SESS_STATE_INTERMISSION) && is_session_state_same(target_client, talker_client)) {
 						sv_queue_voice_packet(talker->s.number, other_player, packet);
 					}
 
@@ -201,7 +194,7 @@ namespace hmw_voice_chat {
 					if (talker_client->team == game::TEAM_FREE && is_session_state_same(target_client, talker_client)) {
 						sv_queue_voice_packet(talker->s.number, other_player, packet);
 					}
-
+					
 					// Deathchat is enabled
 					if (sv_voice_deathchat_enabled())
 					{
@@ -362,7 +355,7 @@ namespace hmw_voice_chat {
 
 			return (client_state->num_players == 0 ? 18 : client_state->num_players);
 		}
-
+		
 		void cl_clear_muted_list()
 		{
 			std::memset(mute_list, 0, sizeof(mute_list));
@@ -400,9 +393,14 @@ namespace hmw_voice_chat {
 
 			game::NET_OutOfBandVoiceData(clc->netchan.sock, const_cast<game::netadr_s*>(&clc->serverAddress), msg.data, msg.cursize);
 		}
-
+	
 		bool is_player_talking(int client_num)
 		{
+			if (client_num >= MAX_CLIENTS || client_num < 0)
+			{
+				return false;
+			}
+
 			auto current_time = game::Sys_Milliseconds();
 			auto client_talk_time = s_clientTalkTime[client_num];
 			if (!client_talk_time)
@@ -414,24 +412,16 @@ namespace hmw_voice_chat {
 			return res;
 		}
 
-
 		bool cl_is_player_talking_stub(void* session, int client_num)
 		{
-			if (client_num >= MAX_CLIENTS || client_num < 0)
-			{
-				return false;
-			}
-
 			return is_player_talking(client_num);
 		}
-
 
 		bool voice_is_xuid_talking_stub(void* session, uint64_t xuid)
 		{
 			// Patoke @note: use saved_talking_client so we don't rely on the session and xuid which might not be populated
 			return is_player_talking(saved_talking_client);
 		}
-
 
 		// Patoke @note: unused
 		int ui_get_talker_client_num_stub(__int64 a1, int a2)
@@ -569,7 +559,6 @@ namespace hmw_voice_chat {
 
 					// Voice_IncomingVoiceData
 					utils::hook::invoke<void>(0x5BF370_b, nullptr, packet.talker, reinterpret_cast<unsigned char*>(packet.data), packet.dataSize);
-					s_clientTalkTime[packet.talker] = game::Sys_Milliseconds();
 				}
 			}
 		}
@@ -590,7 +579,7 @@ namespace hmw_voice_chat {
 		}
 
 		// Patoke @note: skip user registered checks related to voice chat
-		bool session_is_user_registered_stub(void* session, char client_num)
+		bool session_is_user_registered_stub(void* session, int client_num)
 		{
 			auto ret = reinterpret_cast<uintptr_t>(_ReturnAddress());
 			// also should check cl_is_player_talking, but that's completely overwritten by one of our hooks
@@ -646,7 +635,7 @@ namespace hmw_voice_chat {
 			session_is_user_registered_hook.create(0x56B5C0_b, Client::session_is_user_registered_stub);
 			utils::hook::jump(0x135950_b, Client::cl_is_player_talking_stub, true);
 			utils::hook::jump(0x5BF7F0_b, Client::voice_is_xuid_talking_stub, true);
-
+			
 			// Patoke @note: unused hooks
 			//Client::cl_is_player_talking_hook.create(0x135950_b, Client::cl_is_player_talking_stub);
 			//Client::ui_get_talker_client_num_hook.create(0x1E0420_b, Client::ui_get_talker_client_num_stub);
@@ -667,8 +656,6 @@ namespace hmw_voice_chat {
 		sv_voice_all = dvars::register_bool("sv_voice_all", false, game::DVAR_FLAG_NONE, "Enable all comms server wide voice communications");
 		sv_voice_team = dvars::register_bool("sv_voice_team", true, game::DVAR_FLAG_NONE, "Enable team voice communications");
 		sv_voice_death_chat = dvars::register_bool("sv_voice_death_chat", true, game::DVAR_FLAG_NONE, "Enable deathchat voice communications");
-
-		sv_mapvote_active = dvars::register_bool("sv_mapvote_active", false, game::DVAR_FLAG_NONE, "mapvote is active");
 #ifdef DEBUG
 		voice_debug = dvars::register_bool("voice_debug", true, game::DVAR_FLAG_NONE, "Debug voice chat stuff");
 #endif

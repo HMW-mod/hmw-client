@@ -59,25 +59,8 @@ namespace party
 			command::execute("startentitlements", true);
 		}
 
-		void disconnect()
-		{
-			if (!game::VirtualLobby_Loaded())
-			{
-				if (game::CL_IsCgameInitialized())
-				{
-					// CL_AddReliableCommand
-					utils::hook::invoke<void>(0x12B810_b, 0, "disconnect");
-					// CL_WritePacket
-					utils::hook::invoke<void>(0x13D490_b, 0);
-				}
-				// CL_Disconnect
-				utils::hook::invoke<void>(0x12F080_b, 0);
-			}
-		}
-
 		void connect_to_party(const game::netadr_s& target, const std::string& mapname, const std::string& gametype)
 		{
-
 			if (game::Live_SyncOnlineDataFlags(0) != 0)
 			{
 				// initialize the game after onlinedataflags is 32 (workaround)
@@ -129,6 +112,22 @@ namespace party
 			return utils::string::va("%s", server_connection_state.motd.data());
 		}
 
+		void disconnect()
+		{
+			if (!game::VirtualLobby_Loaded())
+			{
+				if (game::CL_IsCgameInitialized())
+				{
+					// CL_AddReliableCommand
+					utils::hook::invoke<void>(0x12B810_b, 0, "disconnect");
+					// CL_WritePacket
+					utils::hook::invoke<void>(0x13D490_b, 0);
+				}
+				// CL_Disconnect
+				utils::hook::invoke<void>(0x12F080_b, 0);
+			}
+		}
+
 		utils::hook::detour cl_disconnect_hook;
 
 		void cl_disconnect_stub(int show_main_menu) // possibly bool
@@ -166,7 +165,7 @@ namespace party
 
 		std::string get_usermap_file_path(const std::string& mapname, const std::string& extension)
 		{
-			return std::format("hmw-usermaps\\{}\\{}{}", mapname, mapname, extension);
+			return std::format("h2m-usermaps\\{}\\{}{}", mapname, mapname, extension);
 		}
 
 		// generate hashes so they are cached
@@ -207,7 +206,7 @@ namespace party
 
 			const auto check_file = [&](const usermap_file& file)
 			{
-				const std::string filename = utils::string::va("hmw-usermaps/%s/%s%s",
+				const std::string filename = utils::string::va("h2m-usermaps/%s/%s%s",
 					mapname.data(), mapname.data(), file.extension.data());
 				const auto source_hash = info.get(file.name);
 				if (source_hash.empty())
@@ -431,32 +430,7 @@ namespace party
 		void set_new_map(const char* mapname, const char* gametype, game::msg_t* msg)
 		{
 			utils::hook::invoke<void>(0x27A040_b);
-
-			auto map_type = fastfiles::map_exists(mapname);
-			if (map_type == fastfiles::MAP_EXISTS_RESULT::MISSING) 
-			{
-				console::error("Failed to find one or more fastfiles for: %s", std::string(mapname).c_str());
-
-				command::execute("disconnect");
-				scheduler::once([]
-					{
-						connect(server_connection_state.host);
-					}, scheduler::pipeline::main);
-
-				// remove from virt lobby?
-				utils::hook::invoke<void>(0x13C9C0_b, 1);
-
-				menu_error(
-					"Missing a required map file.\n"
-					"If map was a...\n"
-					"Base Game Map: verify game files.\n"
-					"DLC Map: verify you have the DLC.\n"
-					"HMW Map: verify mod files with HMW launcher.\n"
-				);
-
-				return;
-			}
-
+			
 			if (!fastfiles::is_stock_map(mapname))
 			{
 				fastfiles::set_usermap(mapname);
@@ -706,7 +680,7 @@ namespace party
 				}
 
 				std::string gamename = jsonObject["gamename"];
-				if (gamename != "HMW"s) {
+				if (gamename != "H2M"s) {
 					connecting_to_server = false;
 					menu_error("Connection failed: Invalid gamename.");
 					return;
@@ -734,20 +708,6 @@ namespace party
 					return;
 				}
 
-				auto map_type = fastfiles::map_exists(mapname);
-				if (map_type == fastfiles::MAP_EXISTS_RESULT::MISSING)
-				{
-					console::error("Failed to find fastfile for zone: %s", std::string(mapname).c_str());
-					menu_error("Missing a required map file.\n"
-						"If map was a...\n"
-						"Base Game Map: verify game files.\n"
-						"DLC Map: verify you have the DLC.\n"
-						"HMW Map: verify mod files with HMW launcher.\n"
-					);
-					connecting_to_server = false;
-					return;
-				}
-
 				std::string gametype = jsonObject["gametype"];
 				if (gametype.empty()) {
 					connecting_to_server = false;
@@ -757,14 +717,10 @@ namespace party
 
 				server_connection_state.base_url = jsonObject["sv_wwwBaseUrl"];
 
-				/* Get rid of this fucking junk - Future Captain Barbossa
-				// @PAST CB Causes halt on main thread when connecting and throws warnings in build console...
+				// @Aphrodite Causes halt on main thread when connecting and throws warnings in build console...
 				if (hmw_tcp_utils::GameServer::download_files_tcp(target, jsonObject, false)) {
-					connecting_to_server = false;
-					menu_error("Something did not work.");
 					return;
 				}
-				*/
 
 				server_connection_state.motd = jsonObject["sv_motd"];
 				std::string maxclients = jsonObject["sv_maxclients"];
@@ -804,7 +760,7 @@ namespace party
 
 	std::string get_usermap_file_path(const std::string& mapname, const std::string& extension)
 	{
-		return std::format("hmw-usermaps\\{}\\{}{}", mapname, mapname, extension);
+		return std::format("h2m-usermaps\\{}\\{}{}", mapname, mapname, extension);
 	}
 
 	std::string get_dvar_string(const std::string& dvar)
@@ -867,7 +823,7 @@ namespace party
 
 		std::string ipStr = std::to_string(ip[0]) + "." + std::to_string(ip[1]) + "." + std::to_string(ip[2]) + "." + std::to_string(ip[3]);
 		std::string url = "http://" + ipStr + ":" + std::to_string(port) + "/getInfo";
-		std::string infoJson = hmw_tcp_utils::GET_url(url.c_str(), {}, false, 1500L, true, 3);
+		std::string infoJson = hmw_tcp_utils::GET_url(url.c_str());
 
 		if (infoJson.empty()) {
 			menu_error("Connection failed: Failed to get response from server.");
@@ -1219,7 +1175,7 @@ namespace party
 
 					utils::info_string info;
 					info.set("challenge", data);
-					info.set("gamename", "HMW");
+					info.set("gamename", "H2M");
 					info.set("hostname", get_dvar_string("sv_hostname"));
 					info.set("gametype", get_dvar_string("g_gametype"));
 					info.set("sv_motd", get_dvar_string("sv_motd"));

@@ -29,15 +29,9 @@ namespace game
 	WEAK symbol<bool(int localClient, ScreenPlacement* scrPlace, vec3_t& WorldLocation, vec2_t& Screen)> CG_WorldPosToScreenPosReal{ 0x307AD0 };
 	WEAK symbol<int(const char* perkName)> BG_GetPerkCodeIndexForName{ 0x2C6270 };
 	WEAK symbol<int(playerState_s* ps)> BG_PlayerLastWeaponHand{ 0x2E95F0 };
-	WEAK symbol<int(Weapon weapIdx, bool isAlternate, bool isDualWielding)> BG_SprintInTime{ 0x2EB5C0 };
+	WEAK symbol<int(Weapon weapIdx, bool isAlternate, bool isDualWielding)> BG_SprintInTime{ 0x2EB640 };
 	WEAK symbol<int(Weapon weapIdx, bool isAlternate, bool isDualWielding)> BG_SprintOutTime{ 0x2EB640 };
 	WEAK symbol<void(playerState_s* ps, PlayerHandIndex hand)> PM_SetReloadingState{ 0x2D66D0 };
-
-	WEAK symbol<int64_t(__int64 weapon, bool isAlternate)> BG_GetMeleeDamage{ 0x2E6A90 };
-	WEAK symbol<__int64(playerState_s* ps)> BG_GetViewmodelWeapon{ 0x2E1270 };
-	WEAK symbol<void(pmove_t* pm, pml_t* pml)> PM_MeleeChargeStart{ 0x2CE560 };
-	WEAK symbol<void(pmove_t* pm, int msec, playerState_s* ps, unsigned int* holdrand)> PM_Weapon_MeleeInit{ 0x2DBA10 };
-	WEAK symbol<bool(playerState_s* ps)> BG_AllowMeleeFromADS{ 0x2E39F0 };
 
 	WEAK symbol<GfxScene> scene{ 0x33E4290 };
 	WEAK symbol<void(int a1)> CL_VirtualLobbyShutdown{ 0x13C9C0 };
@@ -164,7 +158,6 @@ namespace game
 		float min, float max, unsigned int flags)> Dvar_RegisterVec3{0x182DB0};
 	WEAK symbol<dvar_t*(int dvarName, const char* a2, float x, float y, float z, 
 		float w, float min, float max, unsigned int flags)> Dvar_RegisterVec4{0x183010};
-	WEAK symbol<dvar_t* (int hash, const char* dvarName, const char** valueList, int defaultIndex, unsigned int flags)> Dvar_RegisterEnum{0x182700 };
 
 	WEAK symbol<long long(const char* qpath, char** buffer)> FS_ReadFile{0x1EC690};
 	WEAK symbol<void(void* buffer)> FS_FreeFile{0x59E2F0};
@@ -181,8 +174,6 @@ namespace game
 		int entnum, int offset)> GetEntityFieldValue{0x50E2E0};
 
 	WEAK symbol<int(const char* fname)> generateHashValue{0x183F80};
-
-	WEAK symbol<int(int clientNum)> G_GetClientDeaths{ 0x4203D0 };
 
 	WEAK symbol<void()> G_Glass_Update{0x417940};
 	WEAK symbol<int(int clientNum)> G_GetClientScore{0x420420};

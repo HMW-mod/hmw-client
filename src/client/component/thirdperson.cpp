@@ -19,10 +19,10 @@ namespace thirdperson
 		int update_third_person_stub(int local_client_num, game::cg_s* cgame_glob)
 		{
 			auto next_snap = cgame_glob->nextSnap;
-			if (next_snap->ps.pm_type != game::PM_DEAD && next_snap->ps.pm_type != game::PM_DEAD_LINKED)
+			if (next_snap->ps.pm_type < 7u)
 			{
-				int other_flags = next_snap->ps.otherFlags;
-				if ((other_flags & game::POF_REMOTE_EYES) == 0 && (next_snap->ps.linkFlags & game::PLF_WEAPONVIEW_ONLY) == 0)
+				int link_flags = next_snap->ps.linkFlags;
+				if ((link_flags & 2) == 0 && (next_snap->ps.otherFlags & 4) == 0)
 				{
 					auto client_globals = cgame_glob;
 					if (!client_globals->inKillCam || client_globals->killCamEntityType == game::KC_NO_ENTITY)
@@ -32,11 +32,11 @@ namespace thirdperson
 							return 1;
 						}
 
-						if (!(other_flags & game::POF_FOLLOW) || client_globals->killCamEntityType != game::KC_NO_ENTITY)
-							return other_flags & game::POF_COMPASS_EYES_ON;
-						if (other_flags & game::POF_FOLLOW_FORCE_FIRST)
+						if (!(link_flags & (1 << 0xE)) || client_globals->killCamEntityType != game::KC_NO_ENTITY)
+							return (link_flags >> 27) & 1;
+						if (link_flags & (1 << 0x1D))
 							return 0;
-						if (!(other_flags & game::POF_FOLLOW_FORCE_THIRD))
+						if (!(link_flags & (1 << 0x1C)))
 							return cgame_glob->spectatingThirdPerson;
 					}
 				}
