@@ -31,15 +31,15 @@ namespace server_list
 		game::netadr_s address;
 		bool is_private;
 		std::string connect_address;
-		std::string game_version;
-		bool outdated;
-		bool is_official;
 	};
+
+	void sort_serverlist(int sort_type);
 
 	int get_player_count();
 	int get_server_count();
 	void add_favourite(int server_index);
 	void delete_favourite(int server_index);
+	void sort_servers(int sort_type);
 
 	namespace tcp {
 		// TCP functions
@@ -77,20 +77,7 @@ namespace server_list
 
 		void display_error(std::string header, std::string message);
 
-		bool check_can_join(const char* connect_address);
-
-		void sort_current_page(int sort_type, bool bypassListCheck = false);
-
-		// Functions to pass these to lua
-		bool is_getting_server_list();
-		bool is_getting_favourites();
-		bool is_loading_a_page();
-
-		void fetch_game_server_info(const std::string& connect_address, std::shared_ptr<std::atomic<int>> server_index);
-
-		void set_sort_type(int type);
-
-		void join_server_new(int index);
+		bool check_can_join(std::string& connect_address);
 
 	}
 }
