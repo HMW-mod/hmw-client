@@ -13,7 +13,6 @@
 #include <utils/string.hpp>
 #include <utils/http.hpp>
 
-#include "Matchmaking/mmReporter.hpp"
 #include "tcp/hmw_tcp_utils.hpp"
 
 namespace dedicated
@@ -31,32 +30,11 @@ namespace dedicated
 			return -1;
 		}
 
-		std::string get_dvar_netip()
-		{
-			const std::string& dvar = "net_ip";
-			auto* dvar_value = game::Dvar_FindVar(dvar.data());
-			if (dvar_value && dvar_value->current.string)
-			{
-				std::string ip_str = dvar_value->current.string;
-				struct sockaddr_in sa;
-				if (inet_pton(AF_INET, ip_str.c_str(), &(sa.sin_addr)) == 1) {
-					console::info("Resolved net_ip address: %s", ip_str.c_str());
-					return ip_str;
-				}
-				else {
-					console::error("Invalid IP using default 0.0.0.0 instead of %s", ip_str.c_str());
-				}
-			}
-
-			return "0.0.0.0";
-		}
-
-
 		utils::hook::detour gscr_set_dynamic_dvar_hook;
 		utils::hook::detour com_quit_f_hook;
 
 		const game::dvar_t* sv_lanOnly;
-		const game::dvar_t* net_ip;
+
 
 		inline bool sv_is_lanOnly()
 		{
@@ -80,11 +58,7 @@ namespace dedicated
 				return;
 			}
 
-			// send heartbeat asynchronously to master so we don't freeze the main game thread
-			scheduler::once([]()
-			{
-				hmw_tcp_utils::MasterServer::send_heartbeat();
-			}, scheduler::pipeline::async);
+			hmw_tcp_utils::MasterServer::send_heartbeat();
 		}
 
 		std::vector<std::string>& get_startup_command_queue()
@@ -234,18 +208,10 @@ namespace dedicated
 			printf("Starting dedicated server\n");
 
 			// Register dedicated dvar
-			dvars::register_bool("dedicated", true, game::DVAR_FLAG_READ, "Dedicated server");
+			dvars::register_bool("dedicated", true, game::DVAR_FLAG_READ, "Dedicated server");		
 
 			// Add lanonly mode
 			sv_lanOnly = dvars::register_bool("sv_lanOnly", false, game::DVAR_FLAG_NONE, "Don't send heartbeat");
-
-			scheduler::once([]()
-			{
-				net_ip = dvars::register_string("net_ip", "0.0.0.0", game::DVAR_FLAG_NONE, "Network ip");
-				std::cout << "Set default ip: 0.0.0.0" << std::endl;
-				command::read_startup_variable("net_ip");
-			}, scheduler::pipeline::main);
-
 
 			// Disable VirtualLobby
 			dvars::override::register_bool("virtualLobbyEnabled", false, game::DVAR_FLAG_READ);
@@ -362,10 +328,10 @@ namespace dedicated
 				if (game::Live_SyncOnlineDataFlags(0) == 32 && game::Sys_IsDatabaseReady2())
 				{
 					scheduler::once([]
-						{
-							command::execute("xstartprivateparty", true);
-							command::execute("disconnect", true); // 32 -> 0
-						}, scheduler::pipeline::main, 1s);
+					{
+						command::execute("xstartprivateparty", true);
+						command::execute("disconnect", true); // 32 -> 0
+					}, scheduler::pipeline::main, 1s);
 					return scheduler::cond_end;
 				}
 
@@ -396,24 +362,14 @@ namespace dedicated
 
 				if (dedicated) {
 					std::string port = utils::string::va("%i", get_dvar_int("net_port"));
-
-					std::string net_ip = get_dvar_netip();
-					const std::string url = "http://"+ net_ip +":" + port;
-
-					hmw_tcp_utils::GameServer::start_server(url);
-
-					// Lalisa @note: 
-					// make sure this is only running server sided on the server pipe
-					// using something else e.g. 'network' seems to just crash the server after some time
-					//scheduler::loop(mmReporter::reportPlayerStats, scheduler::pipeline::server, 20s);
+					const std::string url = "http://0.0.0.0:" + port;
+					hmw_tcp_utils::GameServer::start_server(url.c_str());
 				}
 
 				// Send heartbeat to master
-				scheduler::once(send_heartbeat, scheduler::pipeline::network);
-				scheduler::loop(send_heartbeat, scheduler::pipeline::network, 2min);
-
+				scheduler::once(send_heartbeat, scheduler::pipeline::async);
+				scheduler::loop(send_heartbeat, scheduler::pipeline::async, 2min);
 				command::add("heartbeat", send_heartbeat);
-				//command::add("playerstats", mmReporter::reportPlayerStats);
 			}, scheduler::pipeline::main, 1s);
 
 			command::add("killserver", kill_server);
