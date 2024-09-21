@@ -47,8 +47,6 @@ namespace hmw_tcp_utils {
 
 	std::string PUT_url(const char* url, std::string body, long timeout = 1000L);
 
-	std::string GET_gameserver(const char* url);
-
 	size_t GET_url_WriteCallback(void* contents, size_t size, size_t nmemb, void* userp);
 #pragma endregion
 
