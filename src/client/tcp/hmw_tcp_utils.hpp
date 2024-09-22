@@ -16,7 +16,6 @@ namespace hmw_tcp_utils {
 		void send_heartbeat();
 
 		const char* get_master_server();
-		const char* get_matchmaking_master_server();
 	}
 
 	namespace GameServer {
@@ -38,14 +37,7 @@ namespace hmw_tcp_utils {
 
 #pragma region Misc functions
 	std::string getInfo_Json();
-	std::string getMatchmakingInfo_Json();
-
-	std::string GET_url(const char* url, const std::map<std::string, std::string>& headers = {}, bool addPing = false, long timeout = 1500L, bool doRetry = false, int retryMax = 4);
-	std::pair<std::string, long> GET_EASY_url(const char* url, const std::string& bearerToken, long timeout = 1500L);
-
-	std::string POST_url(const char* url, std::string body, long timeout = 1000L);
-
-	std::string PUT_url(const char* url, std::string body, long timeout = 1000L);
+	std::string GET_url(const char* url, bool addPing = false, long timeout = 1500L);
 
 	size_t GET_url_WriteCallback(void* contents, size_t size, size_t nmemb, void* userp);
 #pragma endregion
