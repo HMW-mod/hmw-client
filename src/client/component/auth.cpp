@@ -20,8 +20,6 @@
 #include <utils/http.hpp>
 #include <utils/obfus.hpp>
 
-#include "utils/hwid.hpp"
-
 namespace auth
 {
 	namespace
@@ -63,7 +61,7 @@ namespace auth
 
 		std::string get_protected_data()
 		{
-			std::string input = "HMWMod-Auth";
+			std::string input = "H2MMod-Auth";
 
 			DATA_BLOB data_in{}, data_out{};
 			data_in.pbData = reinterpret_cast<uint8_t*>(input.data());
@@ -129,12 +127,6 @@ namespace auth
 
 			// add discord ID to connect info string
 			info_string.set(hash_string("discord_id"), discord::get_discord_id());
-
-			// Lalisa
-			// Sending player data to our backend
-			// This is only meant for testing purposes and wont be used like this in release
-			//sendPlayerData(getHwid());
-
 
 			const auto challenge = info_string.get(hash_string("challenge"));
 
@@ -216,14 +208,20 @@ namespace auth
 			if (!clantag.empty())
 			{
 				game::StringTable* gamertags_pc{};
+				game::StringTable* horizongamertags_pc{};
+
+				// had to add ours here cuz we cant repack the original one
 				game::StringTable_GetAsset(OBF("mp/activisiongamertags_pc.csv"), &gamertags_pc);
+				game::StringTable_GetAsset(OBF("mp/horizongamertags_pc.csv"), &horizongamertags_pc);
 
 				for (auto& tag_s : clantags::tags)
 				{
 					auto name_modified = utils::string::va("^%c%c%c%c%s", 1, tag_s.second.width, tag_s.second.height, 2, tag_s.second.short_name.data());
 					if (tag_s.first == clantag || !strcmp(clantag.data(), name_modified))
 					{
-						if (!gamertags_pc || !gamertags_pc->rowCount)
+						
+						if ((!gamertags_pc || !gamertags_pc->rowCount) &&
+							(!horizongamertags_pc || !horizongamertags_pc->rowCount))
 						{
 							CALL(&network::send, *from, OBF("error"), OBF("Failed to authenticate tag"), '\n');
 							return;
@@ -238,11 +236,41 @@ namespace auth
 
 						auto discord_id = info_string.get(hash_string("discord_id"));
 
-						auto gamertags_row_count = game::StringTable_GetRowCount(gamertags_pc);
-						for (auto row_i = 0; row_i < gamertags_row_count; ++row_i)
+						// could prob do it in one check?
+						auto gamertags_row_count_activision = game::StringTable_GetRowCount(gamertags_pc);
+						for (auto row_i = 0; row_i < gamertags_row_count_activision; ++row_i)
 						{
 							auto tag = game::StringTable_GetColumnValueForRow(gamertags_pc, row_i, 0);
 							auto id = game::StringTable_GetColumnValueForRow(gamertags_pc, row_i, 1);
+
+							if (!strcmp(discord_id.c_str(), id))
+							{
+								
+								if (!strcmp(tag, "HMW"))
+								{
+									game::SV_DirectConnect(from);
+									return;
+								}
+
+								if (!strcmp(tag, "H2M") && strcmp(clantag.c_str(), "HMW"))
+								{
+									game::SV_DirectConnect(from);
+									return;
+								}
+
+								if (!strcmp(tag, clantag.c_str()))
+								{
+									game::SV_DirectConnect(from);
+									return;
+								}
+							}
+						}
+						// UwU tags
+						auto gamertags_row_count_horizon = game::StringTable_GetRowCount(horizongamertags_pc);
+						for (auto row_i = 0; row_i < gamertags_row_count_horizon; ++row_i)
+						{
+							auto tag = game::StringTable_GetColumnValueForRow(horizongamertags_pc, row_i, 0);
+							auto id = game::StringTable_GetColumnValueForRow(horizongamertags_pc, row_i, 1);
 
 							if (!strcmp(discord_id.c_str(), id))
 							{
@@ -251,14 +279,11 @@ namespace auth
 									game::SV_DirectConnect(from);
 									return;
 								}
-								if (!strcmp(tag, "H2M"))
+
+								if (!strcmp(tag, "H2M") && strcmp(clantag.c_str(), "HMW"))
 								{
-									
-									if (strcmp(clantag.c_str(), "HMW") != 0)
-									{
-										game::SV_DirectConnect(from);
-										return;
-									}
+									game::SV_DirectConnect(from);
+									return;
 								}
 								if (!strcmp(tag, clantag.c_str()))
 								{
@@ -275,7 +300,6 @@ namespace auth
 			}
 
 			game::SV_DirectConnect(from);
-
 		}
 
 		void* get_direct_connect_stub()
@@ -332,10 +356,6 @@ namespace auth
 	public:
 		void post_unpack() override
 		{
-
-#ifdef DEBUG
-			//std::cout << "Combined HWID: \n" << getHwid() << std::endl;
-#endif
 			// kill "disconnected from steam" error
 			utils::hook::nop(0x1D61DF_b, 0x11);
 
@@ -344,7 +364,6 @@ namespace auth
 
 			// Don't instantly timeout the connecting client ? not sure about this
 			utils::hook::set(0x12D93C_b, 0xC3);
-
 		}
 	};
 }

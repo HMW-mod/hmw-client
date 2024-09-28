@@ -14,10 +14,7 @@ namespace clantags
 		{"H2M", {"h2", 64, 64}},
 		{"SM2", {"sm", 77, 48}},
 		{"VER", {"vr", 64, 64}},
-		{"HMW", {"hm", 77, 48}}
-	// Could add more tags here in the future
+		{"HMW",	{"hm", 77, 77}}
+		// Could add more tags here in the future
 	};
-
-	std::string get_current_clantag();
-
 }

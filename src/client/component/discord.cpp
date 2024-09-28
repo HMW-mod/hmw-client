@@ -17,16 +17,12 @@
 #include <utils/hook.hpp>
 
 #include <discord_rpc.h>
-#include <utils/hwid.hpp>
-
-#include "Matchmaking/hmw_matchmaking.hpp"
 
 #define DEFAULT_AVATAR "discord_default_avatar"
 #define AVATAR "discord_avatar_%s"
 
 #define DEFAULT_AVATAR_URL "https://cdn.discordapp.com/embed/avatars/0.png"
 #define AVATAR_URL "https://cdn.discordapp.com/avatars/%s/%s.png?size=128"
-
 
 namespace discord
 {
@@ -49,10 +45,6 @@ namespace discord
 			std::string large_image_text;
 			std::string party_id;
 			std::string join_secret;
-			std::string button1Label;
-			std::string button1Url;
-			std::string button2Label;
-			std::string button2Url;
 		};
 
 		DiscordRichPresence discord_presence{};
@@ -63,101 +55,32 @@ namespace discord
 		game::Material* default_avatar_material{};
 
 		std::string discord_user_id{};
-		std::string discord_user_name{};
-
-		//std::string discord_state = "";
-
-		bool is_initialized = false;
 
 		void update_discord_frontend()
 		{
 			discord_presence.details = "Multiplayer";
 			discord_presence.startTimestamp = 0;
-			discord_presence.button1Label = "Match Stats";
-			discord_presence.button1Url = "https://docs.horizonmw.org/";
-			discord_presence.button2Label = "Player Profile";
-			discord_presence.button2Url = "https://x.com/HorizonMWX";
 
 			static const auto in_firing_range = game::Dvar_FindVar("virtualLobbyInFiringRange");
 			static const auto in_the_pit = game::Dvar_FindVar("virtualLobbyInThePit");
 
-			if (in_firing_range && in_firing_range->current.enabled)
+			// change presence in firing range
+			if (in_firing_range != nullptr && in_firing_range->current.enabled == true)
 			{
-				if (in_the_pit && in_the_pit->current.enabled)
+				discord_presence.state = "Firing Range";
+				discord_presence.largeImageKey = "mp_firingrange";
+
+				// if firing range is true and the pit is also true, use cool pit presence
+				if (in_the_pit != nullptr && in_the_pit->current.enabled == true)
 				{
 					discord_presence.state = "The Pit";
 					discord_presence.largeImageKey = "mp_thepit";
 				}
-				else
-				{
-					discord_presence.state = "Firing Range";
-					discord_presence.largeImageKey = "mp_firingrange";
-				}
 			}
 			else
 			{
-				enum class MenuState
-				{
-					FindGameMenu,
-					FindGameSubMenu,
-					XboxLiveLobby,
-					MainMenu
-				} menuState = MenuState::MainMenu;
-
-				if (game::Menu_IsMenuOpenAndVisible(0, "FindGameMenu"))
-				{
-					menuState = MenuState::FindGameMenu;
-				}
-				else if (game::Menu_IsMenuOpenAndVisible(0, "FindGameSubMenu"))
-				{
-					menuState = MenuState::FindGameSubMenu;
-				}
-				else if (game::Menu_IsMenuOpenAndVisible(0, "menu_xboxlive_lobby"))
-				{
-					menuState = MenuState::XboxLiveLobby;
-				}
-
-				switch (menuState)
-				{
-				case MenuState::FindGameMenu:
-					discord_presence.partyPrivacy = DISCORD_PARTY_PRIVATE;
-					discord_presence.details = "Matchmaking";
-					discord_presence.largeImageKey = "menu_multiplayer";
-					discord_strings.state = "Picking playlist";
-					break;
-
-				case MenuState::FindGameSubMenu:
-					discord_presence.partyPrivacy = DISCORD_PARTY_PRIVATE;
-					discord_presence.details = "Matchmaking";
-					discord_presence.largeImageKey = "menu_multiplayer";
-					discord_strings.state = std::format("[{}] Picking gamemode", hmw_matchmaking::MatchMaker::get_playlist());
-					break;
-
-				case MenuState::XboxLiveLobby:
-					discord_presence.partyPrivacy = DISCORD_PARTY_PRIVATE;
-					discord_presence.details = "Matchmaking";
-					discord_presence.largeImageKey = "menu_multiplayer";
-					if (hmw_matchmaking::MatchMaker::showing_party_screen())
-					{
-						discord_strings.state = std::format("[{}] Searching for a game of {}.",
-							hmw_matchmaking::MatchMaker::get_playlist(),
-							hmw_matchmaking::MatchMaker::get_selected_mode());
-						discord_presence.partyMax = hmw_matchmaking::MatchMaker::get_party_max();
-						discord_presence.partySize = hmw_matchmaking::MatchMaker::get_party_size();
-					}
-					else
-					{
-						discord_strings.state = "At Lobby";
-					}
-					break;
-
-				case MenuState::MainMenu:
-				default:
-					discord_presence.largeImageKey = "menu_multiplayer";
-					discord_strings.state = "Main Menu";
-					break;
-				}
-				discord_presence.state = discord_strings.state.data();
+				discord_presence.state = "Main Menu";
+				discord_presence.largeImageKey = "menu_multiplayer";
 			}
 
 			Discord_UpdatePresence(&discord_presence);
@@ -201,19 +124,10 @@ namespace discord
 					discord_presence.partyPrivacy = DISCORD_PARTY_PRIVATE;
 					discord_strings.party_id = "";
 					discord_strings.join_secret = "";
-					discord_strings.button1Label = "Match Stats";
-					discord_strings.button1Url = "https://google.com";
-					discord_strings.button2Label = "Player Profile";
-					discord_strings.button2Url = "https://google.com";
 				}
 				else
 				{
-					if (hmw_matchmaking::MatchMaker::is_in_matchmaking_match()) {
-						discord_strings.state = "Matchmaking server.";
-					}
-					else {
-						discord_strings.state = utils::string::strip(hostname_dvar->current.string);
-					}
+					discord_strings.state = utils::string::strip(hostname_dvar->current.string);
 
 					const auto server_connection_state = party::get_server_connection_state();
 					const auto server_ip_port = std::format("{}.{}.{}.{}:{}",
@@ -253,10 +167,6 @@ namespace discord
 			discord_presence.partyId = discord_strings.party_id.data();
 			discord_presence.joinSecret = discord_strings.join_secret.data();
 
-			discord_presence.button1Label = discord_strings.button1Label.data();
-			discord_presence.button1Url = discord_strings.button1Url.data();
-			discord_presence.button2Label = discord_strings.button2Label.data();
-			discord_presence.button2Url = discord_strings.button2Url.data();
 			Discord_UpdatePresence(&discord_presence);
 		}
 
@@ -344,11 +254,8 @@ namespace discord
 			DiscordRichPresence presence{};
 			presence.instance = 1;
 			presence.state = "";
-			discord_user_name = std::string(request->username);
 			discord_user_id = std::string(request->userId);
-
-			// People are scared of that so we disable it :^)
-			//console::info("Discord: Ready on %s (%s)\n", request->username, request->userId);
+			console::info("Discord: Ready on %s (%s)\n", request->username, request->userId);
 			Discord_UpdatePresence(&presence);
 		}
 
@@ -470,7 +377,81 @@ namespace discord
 		utils::hook::detour ui_activision_tag_allowed_hook;
 		bool ui_activision_tag_allowed_stub(char* clantag, char* steamID)
 		{
-			return verify_clantag_with_discord(clantag, discord_user_id);
+			if (discord_user_id.c_str() == NULL || !strcmp("", discord_user_id.c_str()))
+			{
+				return false;
+			}
+
+			game::StringTable* gamertags_pc;
+			game::StringTable* clantags;
+			game::StringTable* horizongamertags_pc;
+			game::StringTable* horizonclantags;
+
+			if (clantag && *clantag)
+			{
+				// new csv files cuz fuck zonetool
+				utils::hook::invoke<void>(0x5A0A80_b, "mp/activisiongamertags_pc.csv", &gamertags_pc);
+				utils::hook::invoke<void>(0x5A0A80_b, "mp/activisionclantags.csv", &clantags);
+				utils::hook::invoke<void>(0x5A0A80_b, "mp/horizongamertags_pc.csv", &horizongamertags_pc);
+				utils::hook::invoke<void>(0x5A0A80_b, "mp/horizonclantags.csv", &horizonclantags);
+
+				if ((!gamertags_pc || !gamertags_pc->rowCount) ||
+					(!clantags || !clantags->rowCount) ||
+					(!horizongamertags_pc || !horizongamertags_pc->rowCount) ||
+					(!horizonclantags || !horizonclantags->rowCount))
+				{
+					return false;
+				}
+
+				auto clantag_lookup_activision = utils::hook::invoke<const char*>(0x5A0B10_b, clantags, 1, clantag, 0);
+				auto clantag_lookup_horizon = utils::hook::invoke<const char*>(0x5A0B10_b, horizonclantags, 1, clantag, 0);
+
+				if (!*clantag_lookup_activision && !*clantag_lookup_horizon)
+				{
+					return true;
+				}
+
+				auto gamertags_row_count_activision = utils::hook::invoke<int>(0x5A0B00_b, gamertags_pc);
+				for (auto row_i = 0; row_i < gamertags_row_count_activision; ++row_i)
+				{
+					auto tag = utils::hook::invoke<char*>(0x5A0AC0_b, gamertags_pc, row_i, 0);
+					auto id = utils::hook::invoke<char*>(0x5A0AC0_b, gamertags_pc, row_i, 1);
+
+					if (!strcmp(discord_user_id.c_str(), id))
+					{
+						if (!strcmp(tag, "HMW"))
+						{
+							return true;
+						}
+						if (!strcmp(tag, "H2M") && strcmp(clantag, "HMW"))
+						{
+							return true;
+						}
+					}
+				}
+
+				auto gamertags_row_count_horizon = utils::hook::invoke<int>(0x5A0B00_b, horizongamertags_pc);
+				for (auto row_i = 0; row_i < gamertags_row_count_horizon; ++row_i)
+				{
+					auto tag = utils::hook::invoke<char*>(0x5A0AC0_b, horizongamertags_pc, row_i, 0);
+					auto id = utils::hook::invoke<char*>(0x5A0AC0_b, horizongamertags_pc, row_i, 1);
+
+					if (!strcmp(discord_user_id.c_str(), id))
+					{
+						if (!strcmp(tag, "HMW"))
+						{
+							return true;
+						}
+
+						if (!strcmp(tag, "H2M") && strcmp(clantag, "HMW"))
+						{
+							return true;
+						}
+					}
+				}
+			}
+
+			return false;
 		}
 	}
 
@@ -497,89 +478,6 @@ namespace discord
 	std::string get_discord_id()
 	{
 		return discord_user_id;
-	}
-
-	std::string get_discord_username()
-	{
-		return discord_user_name;
-	}
-
-	bool verify_clantag_with_discord(char* clantag, std::string discord_user_id)
-	{
-		if (discord_user_id.empty())
-		{
-			game::StringTable* clantags;
-			utils::hook::invoke<void>(0x5A0A80_b, "mp/activisionclantags.csv", &clantags);
-
-			if (!clantags || !clantags->rowCount)
-			{
-				return true;
-			}
-
-			auto clantag_lookup = utils::hook::invoke<const char*>(0x5A0B10_b, clantags, 1, clantag, 0);
-			if (*clantag_lookup)
-			{
-				return false;
-			}
-
-			return true;
-		}
-
-		if (discord_user_id.c_str() == NULL || !strcmp("", discord_user_id.c_str()))
-		{
-			return false;
-		}
-
-		game::StringTable* gamertags_pc;
-		game::StringTable* clantags;
-
-		if (clantag && *clantag)
-		{
-			utils::hook::invoke<void>(0x5A0A80_b, "mp/activisiongamertags_pc.csv", &gamertags_pc);
-			utils::hook::invoke<void>(0x5A0A80_b, "mp/activisionclantags.csv", &clantags);
-
-			if (!gamertags_pc || !gamertags_pc->rowCount || !clantags || !clantags->rowCount)
-			{
-				return false;
-			}
-
-			auto clantag_lookup = utils::hook::invoke<const char*>(0x5A0B10_b, clantags, 1, clantag, 0);
-			if (!*clantag_lookup)
-			{
-				return true;
-			}
-
-			auto gamertags_row_count = utils::hook::invoke<int>(0x5A0B00_b, gamertags_pc);
-			for (auto row_i = 0; row_i < gamertags_row_count; ++row_i)
-			{
-				auto tag = utils::hook::invoke<char*>(0x5A0AC0_b, gamertags_pc, row_i, 0);
-				auto id = utils::hook::invoke<char*>(0x5A0AC0_b, gamertags_pc, row_i, 1);
-
-				if (!strcmp(discord_user_id.c_str(), id))
-				{
-					if (!strcmp(tag, "HMW"))
-					{
-						return true;
-					}
-
-					if (!strcmp(tag, "H2M"))
-					{
-						return strcmp(clantag, "HMW") != 0;
-					}
-
-					if (!strcmp(tag, clantag))
-					{
-						return true;
-					}
-					return false;
-				}
-			}
-		}
-
-	}
-
-	bool has_initialized() {
-		return is_initialized;
 	}
 
 	class component final : public component_interface
@@ -623,7 +521,7 @@ namespace discord
 			scheduler::loop(Discord_RunCallbacks, scheduler::async, 500ms);
 			scheduler::loop(update_discord, scheduler::async, 5s);
 
-			is_initialized = true;
+			initialized_ = true;
 
 			command::add("discord_accept", []()
 				{
@@ -640,13 +538,16 @@ namespace discord
 
 		void pre_destroy() override
 		{
-			if (!is_initialized || game::environment::is_dedi())
+			if (!initialized_ || game::environment::is_dedi())
 			{
 				return;
 			}
 
 			Discord_Shutdown();
 		}
+
+	private:
+		bool initialized_ = false;
 	};
 }
 
