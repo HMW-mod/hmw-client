@@ -3,17 +3,25 @@
 
 #include "game/game.hpp"
 
+#include "component/console.hpp"
 #include "component/game_module.hpp"
 #include "component/scheduler.hpp"
 
-#include <utils/concurrency.hpp>
 #include <utils/hook.hpp>
-#include <utils/nt.hpp>
 #include <utils/string.hpp>
 
 #include "integrity.hpp"
 #include "breakpoints.hpp"
 #include "window_variations.hpp"
+
+
+#include "utils/obfus.hpp"
+
+// use this if you want to debug out of VS or for whatever use case you need
+// this seems to cause instability on client and may crash randomly starting up
+#ifdef DEBUG
+#define PATCH_BREAKPOINTS
+#endif
 
 #define PRECOMPUTED_INTEGRITY_CHECKS
 #define PRECOMPUTED_BREAKPOINTS
@@ -29,20 +37,20 @@ namespace arxan
 		const std::vector<std::pair<uint8_t*, size_t>>& get_text_sections()
 		{
 			static const std::vector<std::pair<uint8_t*, size_t>> text = []
+			{
+				std::vector<std::pair<uint8_t*, size_t>> texts{};
+
+				const utils::nt::library game{ game_module::get_game_module() };
+				for (const auto& section : game.get_section_headers())
 				{
-					std::vector<std::pair<uint8_t*, size_t>> texts{};
-
-					const utils::nt::library game{ game_module::get_game_module() };
-					for (const auto& section : game.get_section_headers())
+					if (section->Characteristics & IMAGE_SCN_MEM_EXECUTE)
 					{
-						if (section->Characteristics & IMAGE_SCN_MEM_EXECUTE)
-						{
-							texts.emplace_back(game.get_ptr() + section->VirtualAddress, section->Misc.VirtualSize);
-						}
+						texts.emplace_back(game.get_ptr() + section->VirtualAddress, section->Misc.VirtualSize);
 					}
+				}
 
-					return texts;
-				}();
+				return texts;
+			}();
 
 			return text;
 		}
@@ -112,7 +120,7 @@ namespace arxan
 
 			if (!context)
 			{
-				OutputDebugStringA(utils::string::va("Unable to find frame offset for: %llX", return_address));
+				OutputDebugStringA(utils::string::va(OBF("Unable to find frame offset for: %llX"), return_address));
 				return current_checksum;
 			}
 
@@ -121,8 +129,8 @@ namespace arxan
 
 			if (current_checksum != correct_checksum)
 			{
-#ifdef DEV_BUILD
-				OutputDebugStringA(utils::string::va("Adjusting checksum (%llX): %X -> %X", handler_address,
+#ifdef DEBUG
+				OutputDebugStringA(utils::string::va(OBF("Adjusting checksum (%llX): %X -> %X"), handler_address,
 					current_checksum, correct_checksum));
 #endif
 			}
@@ -140,43 +148,43 @@ namespace arxan
 
 			if ((next_inst & 0xFF00FFFF) != 0xFF004583)
 			{
-				throw std::runtime_error(utils::string::va("Unable to patch intact basic block: %llX", game_address));
+				throw std::runtime_error(utils::string::va(OBF("Unable to patch intact basic block: %llX"), game_address));
 			}
 
 			const auto other_frame_offset = static_cast<uint8_t>(next_inst >> 16);
 			static const auto stub = utils::hook::assemble([](utils::hook::assembler& a)
-				{
-					a.push(rax);
+			{
+				a.push(rax);
 
-					a.mov(rax, qword_ptr(rsp, 8));
-					a.sub(rax, 2); // Skip the push we inserted
+				a.mov(rax, qword_ptr(rsp, 8));
+				a.sub(rax, 2); // Skip the push we inserted
 
-					a.push(rax);
-					a.pushad64();
+				a.push(rax);
+				a.pushad64();
 
-					a.mov(r8, qword_ptr(rsp, 0x88));
-					a.mov(rcx, rax);
-					a.mov(rdx, rbp);
-					a.call_aligned(adjust_integrity_checksum);
+				a.mov(r8, qword_ptr(rsp, 0x88));
+				a.mov(rcx, rax);
+				a.mov(rdx, rbp);
+				a.call_aligned(adjust_integrity_checksum);
 
-					a.mov(qword_ptr(rsp, 0x80), rax);
+				a.mov(qword_ptr(rsp, 0x80), rax);
 
-					a.popad64();
-					a.pop(rax);
+				a.popad64();
+				a.pop(rax);
 
-					a.add(rsp, 8);
+				a.add(rsp, 8);
 
-					a.mov(dword_ptr(rdx, rcx, 4), eax);
+				a.mov(dword_ptr(rdx, rcx, 4), eax);
 
-					a.pop(rax); // return addr
-					a.xchg(rax, qword_ptr(rsp)); // switch with push
+				a.pop(rax); // return addr
+				a.xchg(rax, qword_ptr(rsp)); // switch with push
 
-					a.add(dword_ptr(rbp, rax), 0xFFFFFFFF);
+				a.add(dword_ptr(rbp, rax), 0xFFFFFFFF);
 
-					a.mov(rax, dword_ptr(rdx, rcx, 4)); // restore rax
+				a.mov(rax, dword_ptr(rdx, rcx, 4)); // restore rax
 
-					a.ret();
-				});
+				a.ret();
+			});
 
 			// push other_frame_offset
 			utils::hook::set<uint16_t>(game_address, static_cast<uint16_t>(0x6A | (other_frame_offset << 8)));
@@ -197,32 +205,32 @@ namespace arxan
 
 			const auto jump_target = utils::hook::extract<void*>(reinterpret_cast<void*>(next_inst_addr + 1));
 			const auto stub = utils::hook::assemble([jump_target](utils::hook::assembler& a)
-				{
-					a.push(rax);
+			{
+				a.push(rax);
 
-					a.mov(rax, qword_ptr(rsp, 8));
-					a.push(rax);
+				a.mov(rax, qword_ptr(rsp, 8));
+				a.push(rax);
 
-					a.pushad64();
+				a.pushad64();
 
-					a.mov(r8, qword_ptr(rsp, 0x88));
-					a.mov(rcx, rax);
-					a.mov(rdx, rbp);
-					a.call_aligned(adjust_integrity_checksum);
+				a.mov(r8, qword_ptr(rsp, 0x88));
+				a.mov(rcx, rax);
+				a.mov(rdx, rbp);
+				a.call_aligned(adjust_integrity_checksum);
 
-					a.mov(qword_ptr(rsp, 0x80), rax);
+				a.mov(qword_ptr(rsp, 0x80), rax);
 
-					a.popad64();
-					a.pop(rax);
+				a.popad64();
+				a.pop(rax);
 
-					a.add(rsp, 8);
+				a.add(rsp, 8);
 
-					a.mov(dword_ptr(rdx, rcx, 4), eax);
+				a.mov(dword_ptr(rdx, rcx, 4), eax);
 
-					a.add(rsp, 8);
+				a.add(rsp, 8);
 
-					a.jmp(jump_target);
-				});
+				a.jmp(jump_target);
+			});
 
 			utils::hook::call(game_address, stub);
 		}
@@ -298,7 +306,7 @@ namespace arxan
 
 		NTSTATUS NTAPI nt_close_stub(const HANDLE handle)
 		{
-			char info[16];
+			char info[16]{};
 			if (NtQueryObject(handle, OBJECT_INFORMATION_CLASS(4), &info, 2, nullptr) >= 0 && size_t(handle) != 0x12345)
 			{
 				auto* orig = static_cast<decltype(NtClose)*>(nt_close_hook.get_original());
@@ -398,7 +406,7 @@ namespace arxan
 
 		void store_debug_functions()
 		{
-			const utils::nt::library ntdll("ntdll.dll");
+			const utils::nt::library ntdll(OBF("ntdll.dll"));
 
 			for (auto i = 0; i < DBG_FUNCS_COUNT; i++)
 			{
@@ -415,9 +423,10 @@ namespace arxan
 			}
 		}
 
+#ifdef PATCH_BREAKPOINTS
 		namespace breakpoints
 		{
-			utils::concurrency::container<std::unordered_map<PVOID, void*>> handle_handler;
+			std::unordered_map<PVOID, void*> handle_handler;
 
 			void fake_breakpoint_trigger(void* address, _CONTEXT* fake_context)
 			{
@@ -429,14 +438,14 @@ namespace arxan
 				fake_record.ExceptionAddress = reinterpret_cast<void*>(reinterpret_cast<std::uint64_t>(address) + 3);
 				fake_record.ExceptionCode = EXCEPTION_BREAKPOINT;
 
-				for (auto handler : handle_handler.get_raw())
+				for (auto& handler : handle_handler)
 				{
 					if (handler.second)
 					{
 						auto result = utils::hook::invoke<LONG>(handler.second, &fake_info);
 						if (result)
 						{
-							//memset(fake_context, 0, sizeof(_CONTEXT));
+							memset(fake_context, 0, sizeof(_CONTEXT));
 							break;
 						}
 					}
@@ -451,20 +460,20 @@ namespace arxan
 
 				_CONTEXT* fake_context = new _CONTEXT{};
 				const auto stub = utils::hook::assemble([address, jump_target, fake_context](utils::hook::assembler& a)
-					{
-						a.push(rcx);
-						a.mov(rcx, fake_context);
-						a.call_aligned(RtlCaptureContext);
-						a.pop(rcx);
+				{
+					a.push(rcx);
+					a.mov(rcx, fake_context);
+					a.call_aligned(RtlCaptureContext);
+					a.pop(rcx);
 
-						a.pushad64();
-						a.mov(rcx, address);
-						a.mov(rdx, fake_context);
-						a.call_aligned(fake_breakpoint_trigger);
-						a.popad64();
+					a.pushad64();
+					a.mov(rcx, address);
+					a.mov(rdx, fake_context);
+					a.call_aligned(fake_breakpoint_trigger);
+					a.popad64();
 
-						a.jmp(jump_target);
-					});
+					a.jmp(jump_target);
+				});
 
 				utils::hook::nop(game_address, 7);
 				utils::hook::jump(game_address, stub, false);
@@ -506,24 +515,23 @@ namespace arxan
 				breakpoints::patch_breakpoints();
 
 				auto handle = AddVectoredExceptionHandler(first, handler);
-				handle_handler.access([&](std::unordered_map<PVOID, void*>& p)
-					{
-						p[handle] = handler;
-					});
+				handle_handler[handle] = handler;
+
 				return handle;
 			}
 
 			ULONG WINAPI remove_vectored_exception_handler_stub(PVOID handle)
 			{
-				handle_handler.access([&](std::unordered_map<PVOID, void*>& p)
-					{
-						p[handle] = nullptr;
-					});
+				handle_handler[handle] = nullptr;
 				return RemoveVectoredExceptionHandler(handle);
 			}
 		}
+#endif
 
-		static BOOL enumWindowCallback(HWND hWnd, LPARAM lparam) {
+
+
+		static BOOL enumWindowCallback(HWND hWnd, LPARAM lparam)
+		{
 			int length = GetWindowTextLength(hWnd);
 			char* buffer = new char[length + 1];
 			GetWindowText(hWnd, buffer, length + 1);
@@ -531,28 +539,16 @@ namespace arxan
 			delete[] buffer;
 
 			// List visible windows with a non-empty title
-			if (IsWindowVisible(hWnd) && length != 0) {
+			if (IsWindowVisible(hWnd) && length != 0)
+			{
 				int variationsSize = sizeof(window_variations) / sizeof(window_variations[0]);
 
 				// Loop over the variations array
 				for (int i = 0; i < variationsSize; ++i) {
 					auto clean_variation = utils::string::to_lower(window_variations[i]);
-
-					// Search for complete matches
-					std::string lowerWindowTitle = utils::string::to_lower(windowTitle);
-					size_t pos = lowerWindowTitle.find(clean_variation);
-
-					// Check whether the variation is available as a complete word
-					while (pos != std::string::npos) {
-						bool isStart = (pos == 0 || lowerWindowTitle[pos - 1] == ' '); 
-						bool isEnd = (pos + clean_variation.length() == lowerWindowTitle.length() || lowerWindowTitle[pos + clean_variation.length()] == ' ');
-
-						if (isStart && isEnd) {
-							exit(0); 
-							break;
-						}
-
-						pos = lowerWindowTitle.find(clean_variation, pos + 1);
+					if (strstr(utils::string::to_lower(windowTitle.c_str()).c_str(), clean_variation.c_str())) {
+						exit(0);
+						break;
 					}
 				}
 			}
@@ -614,14 +610,15 @@ namespace arxan
 	public:
 		void* load_import(const std::string& library, const std::string& function) override
 		{
-			static auto is_wine = utils::nt::is_wine();
-			if (!is_wine)
+			if (function == "SetThreadContext")
 			{
-				if (function == "SetThreadContext")
-				{
-					return set_thread_context_stub;
-				}
-				else if (function == "AddVectoredExceptionHandler")
+				return set_thread_context_stub;
+			}
+
+#ifdef PATCH_BREAKPOINTS
+			if (!utils::nt::is_wine())
+			{
+				if (function == "AddVectoredExceptionHandler")
 				{
 					return breakpoints::add_vectored_exception_handler_stub;
 				}
@@ -630,6 +627,7 @@ namespace arxan
 					return breakpoints::remove_vectored_exception_handler_stub;
 				}
 			}
+#endif
 
 			return nullptr;
 		}
@@ -649,20 +647,22 @@ namespace arxan
 
 		void post_load() override
 		{
-			if (!utils::nt::is_wine())
-			{
-				remove_hardware_breakpoints();
-				hide_being_debugged();
-				scheduler::loop(hide_being_debugged, scheduler::pipeline::async);
-				store_debug_functions();
-			}
+#ifdef DEBUG
+#ifndef PATCH_BREAKPOINTS
+			printf("PATCH_BREAKPOINTS is disabled\n");
+#endif
+#endif
 
-			const utils::nt::library ntdll("ntdll.dll");
+			remove_hardware_breakpoints();
+			hide_being_debugged();
+			scheduler::loop(hide_being_debugged, scheduler::pipeline::async);
+			store_debug_functions();
+
+			const utils::nt::library ntdll(OBF("ntdll.dll"));
 			nt_close_hook.create(ntdll.get_proc<void*>("NtClose"), nt_close_stub);
 
 			const auto nt_query_information_process = ntdll.get_proc<void*>("NtQueryInformationProcess");
 			nt_query_information_process_hook.create(nt_query_information_process, nt_query_information_process_stub);
-			nt_query_information_process_hook.enable();
 			nt_query_information_process_hook.move();
 
 			AddVectoredExceptionHandler(1, exception_filter);
@@ -670,12 +670,9 @@ namespace arxan
 
 		void post_unpack() override
 		{
-			if (!utils::nt::is_wine())
-			{
-				remove_hardware_breakpoints();
-				search_and_patch_integrity_checks();
-				restore_debug_functions();
-			}
+			remove_hardware_breakpoints();
+			search_and_patch_integrity_checks();
+			restore_debug_functions();
 		}
 	};
 }
