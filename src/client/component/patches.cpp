@@ -18,100 +18,15 @@
 #include <utils/hook.hpp>
 #include <utils/string.hpp>
 #include <utils/flags.hpp>
-#include "clantag_utils.hpp"
-#include <utils/obfus.hpp>
-
-#include "discord.hpp"
-
 
 namespace patches
 {
-
-	static inline void to_lowercase(std::string& input)
-	{
-		std::transform(input.begin(), input.end(), input.begin(),
-			[](unsigned char c) { return std::tolower(c); });
-	}
-
-	static inline void remove_all_occurrences(std::string& text, std::string_view target)
-	{
-		std::string lowercase_text = text;
-		to_lowercase(lowercase_text);
-		std::string lowercase_target(target);
-		to_lowercase(lowercase_target);
-		size_t pos = 0;
-		while ((pos = lowercase_text.find(lowercase_target, pos)) != std::string::npos)
-		{
-			text.erase(pos, target.length());
-			lowercase_text.erase(pos, target.length());
-		}
-	}
-
-	static inline void remove_color_codes(std::string& text)
-	{
-		static const std::array<std::string_view, 11> color_codes = {
-			"^0", "^1", "^2", "^3", "^4", "^5", "^6", "^7", "^8", "^9", "^:"
-		};
-
-		std::string discord_id = discord::get_discord_id();
-		bool is_staff = false;
-		game::StringTable* gamertags_pc{};
-		game::StringTable_GetAsset(("mp/activisiongamertags_pc.csv"), &gamertags_pc);
-
-		if (gamertags_pc && gamertags_pc->rowCount)
-		{
-			auto gamertags_row_count = game::StringTable_GetRowCount(gamertags_pc);
-			for (auto row_i = 0; row_i < gamertags_row_count; ++row_i)
-			{
-				auto tag = game::StringTable_GetColumnValueForRow(gamertags_pc, row_i, 0);
-				auto id = game::StringTable_GetColumnValueForRow(gamertags_pc, row_i, 1);
-
-				if (!strcmp(discord_id.c_str(), id) && !strcmp(tag, "HMW"))
-				{
-					is_staff = true;
-					break;
-				}
-			}
-		}
-
-		if (!is_staff)
-		{
-			for (const auto& code : color_codes)
-			{
-				remove_all_occurrences(text, code);
-			}
-		}
-	}
-
-	static inline void remove_material_handles(std::string& text)
-	{
-		remove_all_occurrences(text, "^\x01");
-		remove_all_occurrences(text, "^\x02");
-	}
-
-	static inline void clean_text(std::string& text)
-	{
-		remove_color_codes(text);
-		remove_material_handles(text);
-	}
-
-	const char* live_get_local_client_name()
-	{
-		std::string name = game::Dvar_FindVar("name")->current.string;
-		clean_text(name);
-		// Remove characters in the range from 0x01 to 0x1F
-		name.erase(std::remove_if(name.begin(), name.end(), [](unsigned char c) {
-			return (c >= 0x01 && c <= 0x1F);
-			}), name.end());
-		// Copy the cleaned name into a static string to avoid memory problems
-		static std::string safe_name;
-		safe_name = name.empty() ? "Unknown Soldier" : name;
-
-		return safe_name.c_str();
-	}
-
 	namespace
 	{
+		const char* live_get_local_client_name()
+		{
+			return game::Dvar_FindVar("name")->current.string;
+		}
 
 		utils::hook::detour sv_kick_client_num_hook;
 
@@ -125,7 +40,6 @@ namespace patches
 			return sv_kick_client_num_hook.invoke<void>(client_num, reason);
 		}
 
-		// Force name set to "Unknown Soldier" if it contains hex 01 to 20
 		std::string get_login_username()
 		{
 			char username[UNLEN + 1];
@@ -135,12 +49,7 @@ namespace patches
 				return "Unknown Soldier";
 			}
 
-			std::string user_name_str{ username, username_len - 1 };
-			user_name_str.erase(std::remove_if(user_name_str.begin(), user_name_str.end(), [](unsigned char c) {
-				return (c >= 0x01 && c <= 0x1F);
-				}), user_name_str.end());
-
-			return user_name_str.empty() ? "Unknown Soldier" : user_name_str;
+			return std::string{username, username_len - 1};
 		}
 
 		utils::hook::detour com_register_dvars_hook;
@@ -446,17 +355,15 @@ namespace patches
 		
 		void* ui_init_stub()
 		{
-			std::array<std::string, 9> zones
+			std::array<std::string, 7> zones
 			{
-				"hmw_killstreak",
-				"hmw_attachments",
-				"hmw_ar1",
-				"hmw_smg",
-				"hmw_shotgun",
-				"hmw_rangers",
-				"hmw_nightshade",
-				"hmw_dlc_killstreaks",
-				"hmw_dlc_factions"
+				"h2m_killstreak",
+				"h2m_attachments",
+				"h2m_ar1",
+				"h2m_smg",
+				"h2m_shotgun",
+				"h2m_launcher",
+				"h2m_rangers"
 			};
 
 			try_load_all_zones(zones);
@@ -499,7 +406,7 @@ namespace patches
 			dvars::override::register_float("compassSize", 1.0f, 0.1f, 50.0f, game::DVAR_FLAG_SAVED);
 
 			// Make cg_fov and cg_fovscale saved dvars
-			dvars::override::register_float("cg_fov", 65.f, 40.f, 120.f, game::DvarFlags::DVAR_FLAG_SAVED);
+			dvars::override::register_float("cg_fov", 65.f, 40.f, 200.f, game::DvarFlags::DVAR_FLAG_SAVED);
 			dvars::override::register_float("cg_fovScale", 1.f, 0.1f, 2.f, game::DvarFlags::DVAR_FLAG_SAVED);
 			dvars::override::register_float("cg_fovMin", 1.f, 1.0f, 90.f, game::DvarFlags::DVAR_FLAG_SAVED);
 
@@ -646,7 +553,7 @@ namespace patches
 			utils::hook::call(0x1CBD06_b, sv_execute_client_message_stub);
 
 			// Change default hostname and make it replicated
-			dvars::override::register_string("sv_hostname", "^5HorizonMW^7 Default Server", game::DVAR_FLAG_REPLICATED);
+			dvars::override::register_string("sv_hostname", "^5H2M-Mod^7 Default Server", game::DVAR_FLAG_REPLICATED);
 
 			// Dont free server/client memory on asset loading (fixes crashing on map rotation)
 			utils::hook::nop(0x132474_b, 5);
@@ -664,14 +571,14 @@ namespace patches
 
 			/*
 			
-				HMW-Mod patches below here
+				H2M-Mod patches below here
 			
 			*/
-			// change names of window name + stat files for hmw
-			utils::hook::copy_string(0x926210_b, (std::string("HorizonMW ") + VERSION).c_str());	// window name
-			utils::hook::copy_string(0x929168_b, (std::string("HorizonMW ") + VERSION).c_str());	// mulitbyte string (window too?)
-			utils::hook::copy_string(0x91F464_b, "hmwdta");		// mpdata
-			utils::hook::copy_string(0x91F458_b, "hmwcdta");	// commondata
+			// change names of window name + stat files for h2m
+			utils::hook::copy_string(0x926210_b, "H2M-Mod");	// window name
+			utils::hook::copy_string(0x929168_b, "H2M-Mod");	// mulitbyte string (window too?)
+			utils::hook::copy_string(0x91F464_b, "h2mdta");		// mpdata
+			utils::hook::copy_string(0x91F458_b, "h2mcdta");	// commondata
 
 			// overrides of lighting dvars to make it script-controlled instead (and replicated to server -> client)
 			dvars::override::register_bool("r_drawsun", 0, game::DVAR_FLAG_NONE | game::DVAR_FLAG_REPLICATED);
@@ -708,7 +615,7 @@ namespace patches
 			utils::hook::nop(0x26D99F_b, 5);
 
 			// change startup loading animation
-			utils::hook::copy_string(0x8E31D8_b, "hmw_loading_animation");
+			utils::hook::copy_string(0x8E31D8_b, "h2_loading_animation");
 
 			utils::hook::set<byte>(0xC393F_b, 11); // allow setting cac in game
 
@@ -743,25 +650,6 @@ namespace patches
 			dvars::register_int("scr_dd_score_kill", 100, 1, 500, game::DVAR_FLAG_NONE, "Demolition XP Cap");
 			dvars::register_int("scr_sab_score_kill", 100, 1, 500, game::DVAR_FLAG_NONE, "Sabotage XP Cap");
 			dvars::register_int("scr_koth_score_kill", 100, 1, 500, game::DVAR_FLAG_NONE, "Headquarters XP Cap");
-
-			// Unlock all troll command
-			command::add("unlockall", []()
-			{
-					command::execute("lui_open_popup popup_unlockall");
-			});
-
-			// Increases unlockstable entries
-			utils::hook::set<uint16_t>(0x33493A_b, 7500);
-			utils::hook::set<uint16_t>(0x334942_b, 7500);
-
-			utils::hook::nop(0x4E084C_b, 5); // disables the "Error getting persistent data" message (prob a rlly bad idea tho)
-			utils::hook::nop(0x4E0840_b, 1); // ^
-			utils::hook::nop(0x1588F0_b, 1); // ^
-			utils::hook::nop(0x158966_b, 5); // ^
-			utils::hook::nop(0x158A36_b, 5); // ^
-			utils::hook::nop(0x158B06_b, 5); // ^
-			utils::hook::nop(0x158C66_b, 5); // ^
-
 		}
 	};
 }
