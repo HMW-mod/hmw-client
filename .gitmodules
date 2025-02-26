@@ -50,4 +50,5 @@
 	url = https://github.com/nothings/stb.git
 [submodule "deps/imgui"]
 	path = deps/imgui
-	url = https://github.com/fedddddd/imgui
+	url = https://github.com/LalisaTM/imgui.git
+	branch = docking
