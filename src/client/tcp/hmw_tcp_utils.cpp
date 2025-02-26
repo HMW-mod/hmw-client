@@ -34,7 +34,7 @@ namespace hmw_tcp_utils {
 
 	namespace MasterServer {
 
-		std::string master_server_url = "https://ms.s2mod.to/game-servers";
+		std::string master_server_url = "https://ms.horizonmw.org/game-servers";
 
 		bool get_dvar_netip_for_heartbeat(std::string& addr)
 		{
