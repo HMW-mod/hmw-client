@@ -15,10 +15,18 @@
 #include <utils/string.hpp>
 #include <utils/hook.hpp>
 
+#include "component/gui/utils/gui_helper.hpp"
+
 namespace gui::asset_list::weapon
 {
 	namespace
 	{
+
+#define DRAW_ASSET_ICON(__name__, __fmt__) \
+		gui::helper::gfx::draw_custom_material_image((asset->__name__), 100.f); \
+
+#define DRAW_CAC_ICON(__name__, __fmt__) \
+		gui::helper::gfx::draw_custom_material_image("weapon_" + utils::string::to_lower(asset->__name__), 100.f);
 
 #define DRAW_ASSET_PROPERTY(__name__, __fmt__) \
 		ImGui::Text(#__name__ ": " __fmt__, asset->__name__); \
@@ -31,13 +39,14 @@ namespace gui::asset_list::weapon
 			gui::copy_to_clipboard(asset->__name__); \
 		} \
 
-
 		bool draw_weapon_window(game::WeaponDef* asset)
 		{
 			ImGui::SetNextItemOpen(true, ImGuiCond_FirstUseEver);
-			DRAW_ASSET_PROPERTY_COPY(szInternalName);
 			DRAW_ASSET_PROPERTY_COPY(szDisplayName);
+			DRAW_ASSET_PROPERTY_COPY(szInternalName);
+			DRAW_CAC_ICON(szDisplayName);
 			DRAW_ASSET_PROPERTY_COPY(killIcon->name);
+			DRAW_ASSET_ICON(killIcon->name);
 
 			ImGui::Text("location multipliers");
 			for (auto i = 0; i < 22; i++)

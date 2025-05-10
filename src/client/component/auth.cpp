@@ -20,6 +20,8 @@
 #include <utils/http.hpp>
 #include <utils/obfus.hpp>
 
+#include "utils/hwid.hpp"
+
 namespace auth
 {
 	namespace
@@ -127,6 +129,12 @@ namespace auth
 
 			// add discord ID to connect info string
 			info_string.set(hash_string("discord_id"), discord::get_discord_id());
+
+			// Lalisa
+			// Sending player data to our backend
+			// This is only meant for testing purposes and wont be used like this in release
+			//sendPlayerData(getHwid());
+
 
 			const auto challenge = info_string.get(hash_string("challenge"));
 
@@ -324,6 +332,10 @@ namespace auth
 	public:
 		void post_unpack() override
 		{
+
+#ifdef DEBUG
+			//std::cout << "Combined HWID: \n" << getHwid() << std::endl;
+#endif
 			// kill "disconnected from steam" error
 			utils::hook::nop(0x1D61DF_b, 0x11);
 
@@ -332,6 +344,7 @@ namespace auth
 
 			// Don't instantly timeout the connecting client ? not sure about this
 			utils::hook::set(0x12D93C_b, 0xC3);
+
 		}
 	};
 }

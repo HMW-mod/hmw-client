@@ -1,6 +1,8 @@
 #include "io.hpp"
 #include "nt.hpp"
 #include <fstream>
+#include <curl/curl.h>
+#include <iostream>
 
 namespace utils::io
 {
@@ -138,5 +140,81 @@ namespace utils::io
 		std::filesystem::copy(src, target,
 		                      std::filesystem::copy_options::overwrite_existing |
 		                      std::filesystem::copy_options::recursive);
+	}
+
+	// Function to download a file using libcurl
+	bool download_file(const std::string& url, const std::string& output_path) {
+		CURL* curl = curl_easy_init();
+		if (!curl) {
+			std::cerr << "Failed to initialize libcurl" << std::endl;
+			return false;
+		}
+
+		std::string buffer;
+		curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWriteCallback);
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
+
+		CURLcode res = curl_easy_perform(curl);
+		if (res != CURLE_OK) {
+			std::cerr << "Error during file download: " << curl_easy_strerror(res) << std::endl;
+			curl_easy_cleanup(curl);
+			return false;
+		}
+
+		curl_easy_cleanup(curl);
+
+		// Use `write_file` from your utils::io to save the downloaded content
+		if (!write_file(output_path, buffer, false)) {
+			std::cerr << "Failed to write file: " << output_path << std::endl;
+			return false;
+		}
+
+		return true;
+	}
+
+	bool download_file_with_auth(const std::string& url, const std::string& output_path, const std::string& bearer_token)
+	{
+		CURL* curl = curl_easy_init();
+		if (!curl) {
+			std::cerr << "Failed to initialize libcurl" << std::endl;
+			return false;
+		}
+
+		std::string buffer;
+		struct curl_slist* headers = nullptr;
+
+		std::string auth_header = "Authorization: Bearer " + bearer_token;
+		headers = curl_slist_append(headers, auth_header.c_str());
+
+		curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWriteCallback);
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
+
+		CURLcode res = curl_easy_perform(curl);
+		if (res != CURLE_OK) {
+			std::cerr << "Error during file download: " << curl_easy_strerror(res) << std::endl;
+			curl_slist_free_all(headers);
+			curl_easy_cleanup(curl);
+			return false;
+		}
+
+		curl_slist_free_all(headers);
+		curl_easy_cleanup(curl);
+
+		if (!write_file(output_path, buffer, false)) {
+			std::cerr << "Failed to write file: " << output_path << std::endl;
+			return false;
+		}
+
+		return true;
+	}
+
+	size_t CurlWriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+		size_t totalSize = size * nmemb;
+		auto* buffer = static_cast<std::string*>(userp);
+		buffer->append(static_cast<char*>(contents), totalSize);
+		return totalSize;
 	}
 }

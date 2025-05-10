@@ -44,7 +44,7 @@ namespace steam_proxy
 #ifndef DEV_BUILD
 			try
 			{
-				this->start_mod("\xF0\x9F\x8E\xAE" " H2 Multiplayer"s, 393100);
+				this->start_mod("\xF0\x9F\x8E\xAE" " Horizon Modern Warfare"s, 393100);
 			}
 			catch (std::exception& e)
 			{

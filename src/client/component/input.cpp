@@ -4,7 +4,8 @@
 #include "game/game.hpp"
 
 #include "game_console.hpp"
-#include "gui/gui.hpp"
+#include "component/debug_gui/gui.hpp"
+
 #include "game/ui_scripting/execution.hpp"
 
 #include <utils/hook.hpp>
@@ -24,12 +25,10 @@ namespace input
 				return;
 			}
 
-#ifdef DEBUG
 			if (!gui::gui_char_event(local_client_num, key))
 			{
 				return;
 			}
-#endif
 
 			cl_char_event_hook.invoke<void>(local_client_num, key);
 		}
@@ -41,17 +40,14 @@ namespace input
 				return;
 			}
 			
-#ifdef DEBUG
 			if (!gui::gui_key_event(local_client_num, key, down))
 			{
 				return;
 			}
-#endif
 
 			cl_key_event_hook.invoke<void>(local_client_num, key, down);
 		}
 
-#ifdef DEBUG
 		void cl_mouse_move_stub(const int local_client_num, int x, int y)
 		{
 			if (!gui::gui_mouse_event(local_client_num, x, y))
@@ -61,7 +57,6 @@ namespace input
 
 			cl_mouse_move_hook.invoke<void>(local_client_num, x, y);
 		}
-#endif
 	}
 
 	class component final : public component_interface
@@ -76,9 +71,7 @@ namespace input
 
 			cl_char_event_hook.create(0x12C8F0_b, cl_char_event_stub);
 			cl_key_event_hook.create(0x135A70_b, cl_key_event_stub);
-#ifdef DEBUG
 			cl_mouse_move_hook.create(0x27B310_b, cl_mouse_move_stub);
-#endif
 		}
 	};
 }

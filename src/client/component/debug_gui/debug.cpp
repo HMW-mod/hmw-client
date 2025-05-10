@@ -67,6 +67,8 @@ namespace gui::debug
 		struct draw_settings
 		{
 			bool enabled;
+			bool draw_coordinates = false;
+			float coordinate_render_range;
 			bool camera_locked;
 			object_type type;
 			float mesh_thickness = 1.f;
@@ -441,6 +443,7 @@ namespace gui::debug
 			if (ImGui::TreeNode("Path nodes"))
 			{
 				ImGui::Checkbox("Draw", &path_node_settings.enabled);
+				ImGui::Checkbox("Draw Coordinates", &path_node_settings.draw_coordinates);
 				ImGui::Checkbox("Lock camera", &path_node_settings.camera_locked);
 
 				ImGui::Checkbox("Draw node links", &path_node_settings.draw_node_links);
@@ -456,6 +459,8 @@ namespace gui::debug
 
 				ImGui::SliderFloat("range", &path_node_settings.range, 0.f, 10000.f);
 				ImGui::SliderFloat("size", &path_node_settings.size, 5.f, 100.f);
+
+				ImGui::SliderFloat("coordinates range", &path_node_settings.coordinate_render_range, 0.f, 10000.f);
 
 				if (path_node_settings.draw_node_links)
 				{
@@ -525,6 +530,7 @@ namespace gui::debug
 			ImGui::End();
 		}
 
+
 		float distance_2d(float* a, float* b)
 		{
 			return sqrt((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]));
@@ -588,12 +594,13 @@ namespace gui::debug
 			}
 
 			auto pathdata = *game::pathdata;
+
 			for (unsigned int i = 0; i < pathdata.nodeCount; i++)
 			{
 				float origin[3] = {};
 				const auto node = &pathdata.nodes[i];
-
 				get_pathnode_origin(node, origin);
+
 				if (distance_2d(path_node_settings.camera, origin) >= path_node_settings.range)
 				{
 					continue;
@@ -602,8 +609,6 @@ namespace gui::debug
 				float screen_center[2]{};
 				ImGuiWindow* window = ImGui::GetCurrentWindow();
 				world_pos_to_screen_pos(origin, screen_center);
-				window->DrawList->AddText(ImGui::GetDefaultFont(), ImGui::GetFontSize(), ImVec2(screen_center[0],
-					screen_center[1]), ImColor(255, 255, 0, 255), utils::string::va("%i", node->constant.type), 0, 0.f, 0);
 
 				switch (path_node_settings.type)
 				{
@@ -621,8 +626,21 @@ namespace gui::debug
 				{
 					draw_node_links(node, origin);
 				}
+
+				if (path_node_settings.draw_coordinates &&
+					distance_2d(path_node_settings.camera, origin) < path_node_settings.coordinate_render_range)
+				{
+					ImColor coord_color(0, 191, 255, 255);
+
+					float fixed_font_size = 20.0f;
+
+					window->DrawList->AddText(ImGui::GetDefaultFont(), fixed_font_size,
+						ImVec2(screen_center[0], screen_center[1] - fixed_font_size), coord_color,
+						utils::string::va("%.6f %.6f %.6f", origin[0], origin[1], origin[2]), 0, 0.f, 0);
+				}
 			}
 		}
+
 
 		entity_type get_entity_type(const char* classname)
 		{

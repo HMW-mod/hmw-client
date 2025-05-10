@@ -1187,9 +1187,38 @@ namespace fastfiles
 		return utils::io::file_exists(utils::string::va("hmw-usermaps\\%s\\%s.ff", name.data(), name.data()));
 	}
 
+	bool is_dlc_map(const std::string& name)
+	{
+		const std::vector<std::string> dlc_zone_basenames = {
+				"carentan",
+				"broadcast",
+				"creek",
+				"killhouse"
+		};
+
+		return std::any_of(dlc_zone_basenames.begin(), dlc_zone_basenames.end(), [&](std::string base) {
+			return name.contains(base);
+			});
+	}
+
 	bool is_stock_map(const std::string& name)
 	{
 		return fastfiles::exists(name, true);
+	}
+
+	MAP_EXISTS_RESULT map_exists(const std::string& mapname)
+	{
+
+		if (fastfiles::is_dlc_map(mapname) && fastfiles::exists(mapname)) { return MAP_EXISTS_RESULT::DLC;  }
+
+		// michelin: I'm not a fan of the existing is_stock_map  or the fastfiles::exists logic. 
+		// we should NOT be checking if a file is in root/zone to see if a map is a stock map... we should be checking a table of mapnames
+		// the exists check should be explicit and separate, like I've expressed here
+		if (fastfiles::is_stock_map(mapname) && fastfiles::exists(mapname)) { return MAP_EXISTS_RESULT::BASE_GAME;  }
+
+		if (fastfiles::usermap_exists(mapname)) { return MAP_EXISTS_RESULT::USER;  }
+
+		return MAP_EXISTS_RESULT::MISSING;
 	}
 
 	void enum_asset_entries(const game::XAssetType type, const std::function<void(game::XAssetEntry*)>& callback, bool include_override)
@@ -1230,6 +1259,33 @@ namespace fastfiles
 	public:
 		void post_unpack() override
 		{
+
+#ifdef DEBUG
+			command::add("dumpPools", []()
+				{
+					console::info("------ Asset Pool Offsets ------\n");
+					for (int i = 0; i < game::ASSET_TYPE_COUNT; ++i)
+					{
+						auto ptr = game::g_assetPool[i];
+						auto count = game::g_poolSize[i];
+						auto elemSize = game::DB_GetXAssetTypeSize(static_cast<game::XAssetType>(i));
+						uint32_t rva = RVA(ptr);
+
+						console::info(
+							"%2d %-15s : ptr=0x%p (RVA=0x%X), count=%u, elemSize=%u\n",
+							i,
+							game::g_assetNames[i],
+							ptr,
+							rva,
+							count,
+							elemSize
+						);
+					}
+					console::info("-------------------------------\n");
+				});
+#endif
+
+
 			db_try_load_x_file_internal_hook.create(0x39A620_b, db_try_load_x_file_internal);
 			db_init_load_x_file_hook.create(0x3681E0_b, db_init_load_x_file_stub);
 			db_find_xasset_header_hook.create(game::DB_FindXAssetHeader, db_find_xasset_header_stub);

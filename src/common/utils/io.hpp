@@ -21,4 +21,7 @@ namespace utils::io
 	std::vector<std::string> list_files(const std::string& directory);
 	std::vector<std::string> list_files_recursively(const std::string& directory);
 	void copy_folder(const std::filesystem::path& src, const std::filesystem::path& target);
+	bool download_file(const std::string& url, const std::string& output_path);
+	bool download_file_with_auth(const std::string& url, const std::string& output_path, const std::string& bearer_token);
+	size_t CurlWriteCallback(void* contents, size_t size, size_t nmemb, void* userp);
 }

@@ -15,6 +15,9 @@
 #include <utils/string.hpp>
 #include <utils/hook.hpp>
 
+
+#include "component/gui/utils/gui_helper.hpp"
+
 namespace gui::asset_list
 {
 	namespace
@@ -51,14 +54,14 @@ namespace gui::asset_list
 			}
 
 			const auto _0 = gsl::finally([&]
-			{
-				if (is_default)
 				{
-					ImGui::PopStyleColor(3);
-				}
-			});
+					if (is_default)
+					{
+						ImGui::PopStyleColor(3);
+					}
+				});
 
-			auto col_index = 0;
+			int col_index = 0;
 			if (!utils::string::strstr_lower(asset_name, assets_name_filter[type].data()))
 			{
 				return;
@@ -81,6 +84,18 @@ namespace gui::asset_list
 				if (ImGui::Button("view"))
 				{
 					asset_view_callbacks.at(type)(asset_name);
+				}
+				ImGui::PopID();
+			}
+
+			if (type == game::ASSET_TYPE_WEAPON)
+			{
+				ImGui::TableSetColumnIndex(col_index++);
+				ImGui::PushID(asset_count[type] + 10000);
+				if (ImGui::Button("Give"))
+				{
+					command::execute(std::string("give ") + (asset_name));
+					std::cout << "Gave " << asset_name << std::endl;
 				}
 				ImGui::PopID();
 			}
@@ -194,18 +209,23 @@ namespace gui::asset_list
 
 			ImGui::BeginChild("assets list");
 
-			auto column_count = 1;
-			column_count += should_add_view_btn;
-			column_count += show_asset_zone;
-			column_count += type == game::ASSET_TYPE_LOCALIZE_ENTRY;
+			// Spaltenanzahl anpassen: Basis (1) + view-Button + (Give-Button bei Waffen) + asset zone + (lokalisierter Wert bei localize entry)
+			int column_count = 1;
+			column_count += should_add_view_btn ? 1 : 0;
+			if (type == game::ASSET_TYPE_WEAPON)
+			{
+				column_count += 1;
+			}
+			column_count += show_asset_zone ? 1 : 0;
+			column_count += (type == game::ASSET_TYPE_LOCALIZE_ENTRY) ? 1 : 0;
 
 			if (ImGui::BeginTable("assets", column_count, flags))
 			{
 				fastfiles::enum_asset_entries(type, [&](const game::XAssetEntry* entry)
-				{
-					asset_count[type]++;
-					draw_table_row(type, entry, should_add_view_btn);
-				}, true);
+					{
+						asset_count[type]++;
+						draw_table_row(type, entry, should_add_view_btn);
+					}, true);
 
 				ImGui::EndTable();
 			}

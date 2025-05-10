@@ -5,6 +5,7 @@
 
 #include <utils/nt.hpp>
 #include <utils/hook.hpp>
+#include "discord.hpp"
 
 namespace splash
 {
@@ -23,6 +24,8 @@ namespace splash
 
 		void post_load() override
 		{
+			
+
 			if (game::environment::is_dedi())
 			{
 				return;
@@ -37,6 +40,9 @@ namespace splash
 			utils::hook::set<uint8_t>(0x5BDF20_b, 0xC3);
 			utils::hook::jump(0x5BE1D0_b, destroy_stub, true);
 			utils::hook::jump(0x5BE210_b, destroy_stub, true);
+
+			
+
 		}
 
 		void pre_destroy() override

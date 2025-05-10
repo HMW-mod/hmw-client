@@ -13,11 +13,24 @@ namespace scheduler
 {
 	namespace
 	{
+		std::atomic<uint64_t> task_id_counter = 0;
+
+		uint64_t generate_task_id()
+		{
+			uint64_t counter = task_id_counter.fetch_add(1, std::memory_order_relaxed) + 1;
+			uint64_t timestamp = static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+
+			// Combine the timestamp and counter to generate a unique ID
+			return (timestamp << 32) | (counter & 0xFFFFFFFF);
+		}
+
 		struct task
 		{
 			std::function<bool()> handler{};
 			std::chrono::milliseconds interval{};
 			std::chrono::high_resolution_clock::time_point last_call{};
+			std::shared_ptr<bool> stop_flag{ std::make_shared<bool>(false) };
+			uint64_t id{}; // Unique ID for the task
 		};
 
 		using task_list = std::vector<task>;
@@ -65,6 +78,20 @@ namespace scheduler
 				});
 			}
 
+			void stop_task(uint64_t task_id)
+			{
+				callbacks_.access([&](task_list& tasks) {
+					for (auto& task : tasks)
+					{
+						if (task.id == task_id)
+						{
+							*task.stop_flag = true;
+							break;
+						}
+					}
+					});
+			}
+
 		private:
 			utils::concurrency::container<task_list> new_callbacks_;
 			utils::concurrency::container<task_list, std::recursive_mutex> callbacks_;
@@ -83,6 +110,7 @@ namespace scheduler
 			}
 		};
 
+		const int REPEAT_FINISHED = -1;
 		volatile bool kill = false;
 		std::thread thread_async;
 		std::thread network_thread;
@@ -131,26 +159,63 @@ namespace scheduler
 	}
 
 	void schedule(const std::function<bool()>& callback, const pipeline type,
-	              const std::chrono::milliseconds delay)
+	              const std::chrono::milliseconds delay, uint64_t* out_task_id)
 	{
 		assert(type >= 0 && type < pipeline::count);
 
 		task task;
-		task.handler = callback;
+		task.handler = [callback, stop_flag = task.stop_flag]() mutable -> bool {
+			return *stop_flag ? cond_end : callback();
+			};
 		task.interval = delay;
 		task.last_call = std::chrono::high_resolution_clock::now();
+		task.id = generate_task_id();
+
+		if (out_task_id)
+		{
+			*out_task_id = task.id;
+		}
 
 		pipelines[type].add(std::move(task));
 	}
 
-	void loop(const std::function<void()>& callback, const pipeline type,
+	void stop(const uint64_t task_id, const pipeline type)
+	{
+		assert(type >= 0 && type < pipeline::count);
+
+		pipelines[type].stop_task(task_id);
+	}
+
+	uint64_t loop(const std::function<void()>& callback, const pipeline type,
 	          const std::chrono::milliseconds delay)
 	{
+		uint64_t task_id = 0;
 		schedule([callback]()
 		{
 			callback();
 			return cond_continue;
-		}, type, delay);
+		}, type, delay, &task_id);
+		return task_id;
+	}
+
+	// Captain Barbossa: I had to make this repeat function. It's like loop but runs X times every Y delay. So delay of 1s and a repeatFor of 60 is to run every 1 second for 60 seconds
+	uint64_t repeat(const std::function<void()>& callback, pipeline type, std::chrono::milliseconds delay, int repeatFor)
+	{
+		if (repeatFor <= 0)
+		{
+			return REPEAT_FINISHED;
+		}
+
+		auto counter = std::make_shared<int>(repeatFor);
+		uint64_t task_id = 0;
+		schedule([callback, counter]() mutable -> bool
+			{
+				callback();
+				(*counter)--;
+
+				return (*counter > 0) ? cond_continue : cond_end;
+			}, type, delay, &task_id);
+		return task_id;
 	}
 
 	void once(const std::function<void()>& callback, const pipeline type,

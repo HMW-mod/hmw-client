@@ -97,7 +97,17 @@ namespace database
 		ASSET_TYPE_SKELETONSCRIPT,
 		ASSET_TYPE_CLUT,
 		ASSET_TYPE_TTF,
-		ASSET_TYPE_COUNT
+		ASSET_TYPE_COUNT,
+		ASSET_TYPE_XANIMPARTS,
+		ASSET_TYPE_SOUND_SUBMIX,
+		ASSET_TYPE_CLIPMAP,
+		ASSET_TYPE_COMWORLD,
+		ASSET_TYPE_GLASSWORLD,
+		ASSET_TYPE_PATHDATA,
+		ASSET_TYPE_FXWORLD,
+		ASSET_TYPE_GFXWORLD,
+		ASSET_TYPE_SNDDRIVER_GLOBALS,
+		ASSET_TYPE_STRUCTURED_DATA_DEF,
 	};
 
 	struct FxEffectDef;
@@ -239,19 +249,28 @@ namespace database
 		dm_uint8 next;
 	}; assert_sizeof(dmSubEdge, 4);
 
+	struct dmPlane
+	{
+		dmFloat3 normal;
+		dm_float32 offset;
+	};
+
 	struct dmPolytopeData
 	{
-		dmFloat4* vec4_array0; // count: m_vertexCount, m_aVertices?
-		dmFloat4* vec4_array1; // count: m_faceCount, m_aPlanes?
-		dm_uint16* uint16_array0; // count: m_faceCount, m_vertexMaterials? surfaceType? // ALWAYS 0
-		dm_uint16* uint16_array1; // count: m_vertexCount, m_vertexMaterials? // ALWAYS 0
+		dmFloat4* m_aVertices; // count: m_vertexCount
+		dmPlane* m_aPlanes; // count: m_faceCount
+		dm_uint16* m_surfaceTypes; // count: m_faceCount // ALWAYS 0
+		dm_uint16* m_vertexMaterials; // count: m_vertexCount // ALWAYS 0
 		dmSubEdge* m_aSubEdges; // count: m_subEdgeCount
 		dm_uint8* m_aFaceSubEdges; // count: m_faceCount
 		dmFloat3 m_centroid;
 		dm_int32 m_vertexCount;
 		dm_int32 m_faceCount;
 		dm_int32 m_subEdgeCount;
-		float pad1[8];
+		dm_float32 m_volume;
+		dm_float32 m_area;
+		dmFloat3 m_inertiaMoments;
+		dmFloat3 m_inertiaProducts;
 		int contents;
 		int pad2;
 	}; assert_sizeof(dmPolytopeData, 0x70);
@@ -6658,7 +6677,7 @@ namespace database
 		float origin[3];
 		unsigned short triggerIndex;
 		unsigned char sunPrimaryLightIndex;
-		unsigned int entityUID;
+		float radiometricScale;
 	}; assert_sizeof(Stage, 32);
 
 	enum DynEntityType : std::int32_t
@@ -7198,9 +7217,9 @@ namespace database
 	{
 		GfxLightType type; // 0
 		unsigned char canUseShadowMap; // 1
-		unsigned char needsDynamicShadows; // 2
+		unsigned char physicallyBased; // 2
 		unsigned char exponent; // 3
-		unsigned char isVolumetric; // 4
+		unsigned char lightingState; // 4
 		char __pad0[3];
 		float color[3]; // 8 12 16
 		float dir[3]; // 20 24 28
@@ -7502,6 +7521,7 @@ namespace database
 		unsigned short cellIndex;
 		unsigned short closeDistance;
 		unsigned char vertexCount;
+		unsigned short distancePortalIndex;
 		float hullAxis[2][3];
 	}; assert_sizeof(GfxPortal, 80);
 	assert_offsetof(GfxPortal, vertices, 40);

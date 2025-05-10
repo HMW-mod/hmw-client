@@ -6,6 +6,9 @@
 #include <utils/hook.hpp>
 #include <utils/string.hpp>
 
+#include "component/gui/utils/ImGuiNotify.hpp"
+#include "component/gui/utils/gui_helper.hpp"
+
 namespace colors
 {
 	struct hsv_color
@@ -127,6 +130,10 @@ namespace colors
 			{
 				*color = 0xFFFCFF80;
 			}
+			else if (index == '?')
+			{
+				ImGui::InsertNotification({ ImGuiToastType::Debug, 3000, "Rain mode???" });
+			}
 			else
 			{
 				*color = color_table[color_index(index)];
@@ -144,10 +151,8 @@ namespace colors
 				return;
 			}
 
-#ifdef DEBUG
 			// allows colored name in-game
 			utils::hook::jump(0x5AEDF0_b, com_clean_name_stub, true);
-#endif
 
 			// don't apply colors to overhead names
 			utils::hook::call(0xF7B85_b, get_client_name_stub);

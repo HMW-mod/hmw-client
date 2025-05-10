@@ -307,6 +307,16 @@ namespace utils::hook
 		MH_DisableHook(this->place_);
 	}
 
+	void detour::queue_enable()
+	{
+		MH_QueueEnableHook(this->place_);
+	}
+
+	void detour::queue_disable()
+	{
+		MH_QueueDisableHook(this->place_);
+	}
+
 	void detour::create(void* place, void* target)
 	{
 		this->clear();

@@ -13,6 +13,7 @@
 #include <utils/string.hpp>
 #include <utils/http.hpp>
 
+#include "Matchmaking/mmReporter.hpp"
 #include "tcp/hmw_tcp_utils.hpp"
 
 namespace dedicated
@@ -400,12 +401,19 @@ namespace dedicated
 					const std::string url = "http://"+ net_ip +":" + port;
 
 					hmw_tcp_utils::GameServer::start_server(url);
+
+					// Lalisa @note: 
+					// make sure this is only running server sided on the server pipe
+					// using something else e.g. 'network' seems to just crash the server after some time
+					//scheduler::loop(mmReporter::reportPlayerStats, scheduler::pipeline::server, 20s);
 				}
 
 				// Send heartbeat to master
 				scheduler::once(send_heartbeat, scheduler::pipeline::network);
 				scheduler::loop(send_heartbeat, scheduler::pipeline::network, 2min);
+
 				command::add("heartbeat", send_heartbeat);
+				//command::add("playerstats", mmReporter::reportPlayerStats);
 			}, scheduler::pipeline::main, 1s);
 
 			command::add("killserver", kill_server);

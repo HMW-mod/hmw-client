@@ -52,9 +52,12 @@ namespace scheduler
 	static const bool cond_end = true;
 
 	void schedule(const std::function<bool()>& callback, pipeline type = pipeline::async,
+		std::chrono::milliseconds delay = 0ms, uint64_t* out_task_id = nullptr);
+	void stop(const uint64_t task_id, const pipeline type);
+	uint64_t loop(const std::function<void()>& callback, pipeline type = pipeline::async,
 		std::chrono::milliseconds delay = 0ms);
-	void loop(const std::function<void()>& callback, pipeline type = pipeline::async,
-		std::chrono::milliseconds delay = 0ms);
+	uint64_t repeat(const std::function<void()>& callback, pipeline type = pipeline::async,
+		std::chrono::milliseconds delay = 0ms, int repeatFor = 1);
 	void once(const std::function<void()>& callback, pipeline type = pipeline::async,
 		std::chrono::milliseconds delay = 0ms);
 	void on_game_initialized(const std::function<void()>& callback, pipeline type = pipeline::async,

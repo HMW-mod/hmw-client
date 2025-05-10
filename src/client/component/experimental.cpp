@@ -25,11 +25,17 @@
 
 namespace experimental
 {
+
 	game::dvar_t* sv_open_menu_mapvote = nullptr;
 #ifdef DEBUG
 	game::dvar_t* cg_draw_material = nullptr;
 #endif
-	namespace 
+
+	game::dvar_t* mm_loggedin = nullptr;
+	game::dvar_t* mm_email = nullptr;
+	game::dvar_t* mm_password = nullptr;
+
+	namespace stuff
 	{
 		void open_lui_mapvote() 
 		{
@@ -362,6 +368,81 @@ namespace experimental
 		int frames_passed = 0; // 20 then resets to 0
 		std::optional<std::string> current_material;
 
+		std::string get_target_material_name()
+		{
+			static std::string cached_material_name;
+			static double last_update_time = 0.0;
+			const double update_interval = 0.05; // 0.05 seconds = 50ms
+
+			double current_time = ImGui::GetTime();
+			if ((current_time - last_update_time) < update_interval)
+			{
+				return cached_material_name;
+			}
+			last_update_time = current_time;
+
+			static const auto* gfx_map = *reinterpret_cast<game::GfxWorld**>(0xE973AE0_b);
+			if (!gfx_map)
+			{
+				cached_material_name = "";
+				return "";
+			}
+
+			game::vec3_t origin{};
+			const auto client = game::g_entities[0].client;
+			const auto angles = client->ps.viewangles;
+			utils::hook::invoke<void>(0x4057F0_b, client, origin); // G_GetPlayerViewOrigin
+
+			game::vec3_t forward{};
+			utils::hook::invoke<void>(0x59C600_b, angles, forward, nullptr, nullptr); // AngleVectors
+
+			float min_distance = -1.f;
+			game::GfxSurface* target_surface = nullptr;
+
+			for (unsigned int i = 0; i < gfx_map->surfaceCount; i++)
+			{
+				const auto surface = &gfx_map->dpvs.surfaces[i];
+				const auto indices = &gfx_map->draw.indices[surface->tris.baseIndex];
+
+				for (int o = 0; o < surface->tris.triCount; o++)
+				{
+					game::vec3_t triangle[3]{};
+					for (int j = 0; j < 3; j++)
+					{
+						const auto index = indices[o * 3 + j] + surface->tris.firstVertex;
+						const auto vertex = &gfx_map->draw.vd.vertices[index];
+
+						triangle[j][0] = vertex->xyz[0];
+						triangle[j][1] = vertex->xyz[1];
+						triangle[j][2] = vertex->xyz[2];
+					}
+
+					if (lineTriangleIntersection(triangle, origin, forward))
+					{
+						game::vec3_t center{};
+						getCenterPoint(triangle, center);
+						const auto dist = distance_3d(center, origin);
+
+						if (dist < min_distance || min_distance == -1.f)
+						{
+							min_distance = dist;
+							target_surface = surface;
+						}
+					}
+				}
+			}
+
+			if (min_distance == -1.f || !target_surface || !target_surface->material || !target_surface->material->name)
+			{
+				cached_material_name = "";
+				return "";
+			}
+
+			cached_material_name = target_surface->material->name;
+			return cached_material_name;
+		}
+
+
 		void render_draw_material()
 		{
 			static const auto* sv_running = game::Dvar_FindVar("sv_running");
@@ -370,13 +451,13 @@ namespace experimental
 				return;
 			}
 
-			static const auto* cg_draw2d = game::Dvar_FindVar("cg_draw2D");
-			if (cg_draw2d && !cg_draw2d->current.enabled)
+			if (!cg_draw_material || !cg_draw_material->current.enabled)
 			{
 				return;
 			}
 
-			if (!cg_draw_material || !cg_draw_material->current.integer)
+			static const auto* cg_draw2d = game::Dvar_FindVar("cg_draw2D");
+			if (cg_draw2d && !cg_draw2d->current.enabled)
 			{
 				return;
 			}
@@ -405,76 +486,91 @@ namespace experimental
 				return;
 			}
 
-			/*
-			if (frames_passed > 5)
-			{
-				frames_passed = 0;
-				current_material = {};
-			}
-			else
-			{
-				frames_passed = frames_passed + 1;
-			}
-
-			if (current_material.has_value())
-			{
-				game::UI_DrawWrappedText(placement, current_material.value().data(), &rect, font,
-					8.0, 240.0f, 0.2f, text_color, 0, 0, &text_rect, 0);
-				return;
-			}
-			*/
-
 			game::vec3_t origin{};
 			const auto client = game::g_entities[0].client;
-			const auto angles = client->ps.viewangles;
 			utils::hook::invoke<void>(0x4057F0_b, client, origin); // G_GetPlayerViewOrigin
 
 			game::vec3_t forward{};
-			utils::hook::invoke<void>(0x59C600_b, angles, forward, nullptr, nullptr); // AngleVectors
+			utils::hook::invoke<void>(0x59C600_b, client->ps.delta_angles, forward, nullptr, nullptr); // AngleVectors
 
 			float min_distance = -1.f;
-			game::vec3_t target_center{};
-			game::vec3_t target_triangle[3]{};
+			float second_min_distance = -1.f;
+			float third_min_distance = -1.f;
+
+			game::vec3_t target_center{}, target_triangle[3]{};
+			game::vec3_t secondary_target_center{}, secondary_target_triangle[3]{};
+			game::vec3_t third_target_center{}, third_target_triangle[3]{};
+
 			game::GfxSurface* target_surface = nullptr;
+			game::GfxSurface* secondary_surface = nullptr;
+			game::GfxSurface* third_surface = nullptr;
 
 			for (auto i = 0u; i < gfx_map->surfaceCount; i++)
 			{
 				const auto surface = &gfx_map->dpvs.surfaces[i];
 				const auto indices = &gfx_map->draw.indices[surface->tris.baseIndex];
-				auto too_far = false;
-				for (auto o = 0; o < surface->tris.triCount; o++)
+				bool too_far = false;
+
+				for (auto o = 0; o < surface->tris.triCount && !too_far; o++)
 				{
 					game::vec3_t triangle[3]{};
+
 					for (auto j = 0; j < 3; j++)
 					{
 						const auto index = indices[o * 3 + j] + surface->tris.firstVertex;
 						const auto vertex = &gfx_map->draw.vd.vertices[index];
+
 						if (distance_2d(vertex->xyz, origin) > 1000.f)
 						{
 							too_far = true;
 							break;
 						}
-						triangle[j][0] = vertex->xyz[0];
-						triangle[j][1] = vertex->xyz[1];
-						triangle[j][2] = vertex->xyz[2];
+
+						std::memcpy(&triangle[j], vertex->xyz, sizeof(float[3]));
 					}
 
-					if (too_far)
-					{
-						break;
-					}
-
-					if (lineTriangleIntersection(triangle, origin, forward))
+					if (!too_far && lineTriangleIntersection(triangle, origin, forward))
 					{
 						game::vec3_t center{};
 						getCenterPoint(triangle, center);
 						const auto dist = distance_3d(center, origin);
+
+						// a messy if statement of gross shifting between mats
 						if (dist < min_distance || min_distance == -1.f)
 						{
-							min_distance = dist;
+							third_surface = secondary_surface;
+							third_min_distance = second_min_distance;
+							std::memcpy(&third_target_triangle, &secondary_target_triangle, sizeof(third_target_triangle));
+							std::memcpy(&third_target_center, &secondary_target_center, sizeof(game::vec3_t));
+
+							secondary_surface = target_surface;
+							second_min_distance = min_distance;
+							std::memcpy(&secondary_target_triangle, &target_triangle, sizeof(secondary_target_triangle));
+							std::memcpy(&secondary_target_center, &target_center, sizeof(game::vec3_t));
+
 							target_surface = surface;
-							std::memcpy(&target_triangle, &triangle, sizeof(game::vec3_t[3]));
+							min_distance = dist;
+							std::memcpy(&target_triangle, &triangle, sizeof(target_triangle));
 							std::memcpy(&target_center, &center, sizeof(game::vec3_t));
+						}
+						else if (dist < second_min_distance || second_min_distance == -1.f)
+						{
+							third_surface = secondary_surface;
+							third_min_distance = second_min_distance;
+							std::memcpy(&third_target_triangle, &secondary_target_triangle, sizeof(third_target_triangle));
+							std::memcpy(&third_target_center, &secondary_target_center, sizeof(game::vec3_t));
+
+							secondary_surface = surface;
+							second_min_distance = dist;
+							std::memcpy(&secondary_target_triangle, &triangle, sizeof(secondary_target_triangle));
+							std::memcpy(&secondary_target_center, &center, sizeof(game::vec3_t));
+						}
+						else if (dist < third_min_distance || third_min_distance == -1.f)
+						{
+							third_surface = surface;
+							third_min_distance = dist;
+							std::memcpy(&third_target_triangle, &triangle, sizeof(third_target_triangle));
+							std::memcpy(&third_target_center, &center, sizeof(game::vec3_t));
 						}
 					}
 				}
@@ -485,26 +581,28 @@ namespace experimental
 				return;
 			}
 
-			auto* material = target_surface->material;
-			if (!material || !material->name)
-			{
-				return;
-			}
-			auto material_name = material->name;
+			// Surface materials info
+			const char* text = nullptr;
 
-			auto techniqueset_name = "^1null^7";
-			if (material->techniqueSet && material->techniqueSet->name)
-			{
-				techniqueset_name = utils::string::va("^3%s^7", material->techniqueSet->name);
-			}
+			auto format_material_info = [](const game::GfxSurface* surface)
+				{
+					if (!surface || !surface->material || !surface->material->name)
+					{
+						return "";
+					}
 
-			auto text = utils::string::va("%s (%s)",
-				material_name,
-				techniqueset_name);
-			current_material = text;
+					auto techniqueset_name = surface->material->techniqueSet && surface->material->techniqueSet->name ?
+						utils::string::va("^3%s^7", surface->material->techniqueSet->name) : "^1null^7";
+					return utils::string::va("%s (%s)\n", surface->material->name, techniqueset_name);
+				};
+
+			text = utils::string::va("%s%s%s",
+				format_material_info(target_surface),
+				format_material_info(secondary_surface),
+				format_material_info(third_surface));
 
 			game::UI_DrawWrappedText(placement, text, &rect, font,
-				8.0, 240.0f, 0.2f, text_color, 0, 0, &text_rect, 0);
+				8.0, 240.0f, 0.2f, text_color, 6, 0, &text_rect, 0);
 		}
 
 		utils::hook::detour cg_draw2d_hook;
@@ -526,7 +624,7 @@ namespace experimental
 		void post_unpack() override
 		{
 			// use "wetmodel" for wet environments in costumemodeltable.csv
-			bg_customization_get_model_name_hook.create(0x62890_b, bg_customization_get_model_name_stub);
+			stuff::bg_customization_get_model_name_hook.create(0x62890_b, stuff::bg_customization_get_model_name_stub);
 
 			// fix static model's lighting going black sometimes
 			//dvars::override::register_int("r_smodelInstancedThreshold", 0, 0, 128, 0x0);
@@ -542,7 +640,7 @@ namespace experimental
 			utils::hook::copy(0x6BBB81_b, "\xC2\x00\x00", 3); // equivalent
 
 			utils::hook::nop(0x26D99F_b, 5); // stop unk call (probably for server host?)
-			utils::hook::copy_string(0x8E31D8_b, "h2_loading_animation"); // swap loading icon
+			utils::hook::copy_string(0x8E31D8_b, "hmw_loading_animation"); // swap loading icon
 			utils::hook::set<uint8_t>(0xC393F_b, 11); // increment persistent player data clcState check
 
 			utils::hook::set<float>(0x8FBA04_b, 350.f); // modify position of loading information
@@ -555,7 +653,20 @@ namespace experimental
 			
 			// Hacky way of opening lui menu_mapvote
 			sv_open_menu_mapvote = dvars::register_bool("sv_open_menu_mapvote", false, game::DVAR_FLAG_EXTERNAL, "Open mapvote lui");
-			scheduler::loop(open_lui_mapvote, scheduler::pipeline::lui, 100ms);
+			scheduler::loop(stuff::open_lui_mapvote, scheduler::pipeline::lui, 100ms);
+
+			// Matchmaking
+			//mm_loggedin = dvars::register_bool("mm_loggedin", false, game::DVAR_FLAG_NONE, "Has Matchmaking logged in");
+			//mm_email = dvars::register_string("mm_email", "", game::DVAR_FLAG_NONE, "Matchmaking username");
+			//mm_password = dvars::register_string("mm_password", "", game::DVAR_FLAG_NONE, "Matchmaking password");
+			// 
+			// Nibba what why does this make it work?!
+			scheduler::once([]()
+			{
+				mm_loggedin = dvars::register_bool("mm_loggedin", false, game::DvarFlags::DVAR_FLAG_NONE, "Email for mm stuff");
+				mm_email = dvars::register_string("mm_email", "username", game::DvarFlags::DVAR_FLAG_NONE, "Email for mm stuff");
+				mm_password = dvars::register_string("mm_password", "password", game::DvarFlags::DVAR_FLAG_NONE, "Email for mm stuff");
+			}, scheduler::pipeline::main);
 
 			/*
 				voice experiments
@@ -563,7 +674,7 @@ namespace experimental
 			hmw_voice_chat::setup_hooks();
 
 			// add predator missile boosting
-			missile_trajectory_controlled_hook.create(0x42AAE0_b, missile_trajectory_controlled_stub);
+			stuff::missile_trajectory_controlled_hook.create(0x42AAE0_b, stuff::missile_trajectory_controlled_stub);
 
 			/* Ninja Perk */
 			//CG_GetFootstepVolumeScale_Detour.create(0x3E5440_b, CG_GetFootstepVolumeScale_Stub);
@@ -573,7 +684,7 @@ namespace experimental
 			//utils::hook::jump(0x2DBA53_b, utils::hook::assemble(commando_lunge_stub), true);
 #ifdef DEBUG
 			cg_draw_material = dvars::register_bool("cg_drawMaterial", false, game::DVAR_FLAG_NONE, "Draws material name on screen");
-			cg_draw2d_hook.create(0xF57D0_b, cg_draw2d_stub);
+			stuff::cg_draw2d_hook.create(0xF57D0_b, stuff::cg_draw2d_stub);
 #endif
 		}
 	};

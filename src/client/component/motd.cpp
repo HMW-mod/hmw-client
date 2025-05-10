@@ -9,6 +9,7 @@
 #include "scheduler.hpp"
 
 #include "game/game.hpp"
+#include "tcp/hmw_tcp_utils.hpp";
 
 #include <utils/string.hpp>
 #include <utils/concurrency.hpp>
@@ -120,6 +121,16 @@ namespace motd
 			return {};
 		}
 
+		std::string get_server_file_updated(const std::string& file) {
+			std::string url = "https://price.horizonmw.org/" + file;
+			std::string response = hmw_tcp_utils::GET_url(url.c_str(), {}, false, 3000L, false, 4); // Timeout after 3 seconds
+			if (response.empty()) {
+				return "";
+			}
+
+			return response;
+		}
+
 		void init_links(links_map_t& map)
 		{
 			map =
@@ -162,6 +173,22 @@ namespace motd
 			{
 				data.clear();
 
+				//printf("Getting marketing data.\n");
+				std::string marketing_response = get_server_file_updated("marketing2.json");
+				if (marketing_response.empty()) {
+					//printf("Failed to get marketing data. No response.\n");
+					return;
+				}
+
+				data = nlohmann::json::parse(marketing_response);
+				add_links(data);
+				if (load_images)
+				{
+					download_images(data);
+				}
+				//printf("Got marketing data.\n");
+
+				/*
 				const auto marketing_data = get_server_file("marketing2.json");
 				if (marketing_data.has_value())
 				{
@@ -180,7 +207,7 @@ namespace motd
 					{
 						printf("Failed to load marketing.json: %s\n", e.what());
 					}
-				}
+				}*/
 			});
 		}
 	}
@@ -247,6 +274,11 @@ namespace motd
 			{
 				return data.is_object() && data["motd"].is_object();
 			});
+	}
+
+	nlohmann::json get_motd_updated()
+	{
+		return nlohmann::json();
 	}
 
 	std::thread init_thread;

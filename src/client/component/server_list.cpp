@@ -9,6 +9,9 @@
 #include "party.hpp"
 #include "scheduler.hpp"
 #include "server_list.hpp"
+#include "discord.hpp"
+#include "clantags.hpp"
+#include "clantag_utils.hpp"
 
 #include "game/game.hpp"
 #include "game/dvars.hpp"
@@ -24,6 +27,7 @@
 #include <thread>
 #include <limits.h>
 #include <future>
+#include "gui/browser/server_browser.hpp"
 
 namespace server_list
 {
@@ -151,6 +155,10 @@ namespace server_list
 
 		void refresh_server_list()
 		{
+			server_browser::toggle();
+			server_browser::refresh_current_page();
+			return; // Cancel out old server browser garbage
+
 			if (tcp::getting_server_list || tcp::getting_favourites || tcp::is_loading_page) {
 				return;
 			}
@@ -457,7 +465,6 @@ namespace server_list
 				//tcp::interrupt_server_list = true;
 				//party::connect(servers[index].address);
 
-				//@CB TODO. Fix this with new system. because its now called with lui, connect_address gets corruipted
 				bool canJoin = server_list::tcp::check_can_join(servers[index].connect_address.data());
 				if (canJoin) {
 					//command::execute("connect " + servers[i].connect_address);
@@ -886,11 +893,27 @@ namespace server_list
 			return false;
 		}
 
-		std::string game_server_info = std::string(connect_address) + "/getInfo";
+		std::string game_server_info = std::string(connect_address) + "/join";
 
 		const char* server_address = game_server_info.data();
 
-		std::string game_server_response = hmw_tcp_utils::GET_url(server_address, {}, true, 1500L, true, 3);
+		std::string clanTag = clantags::get_current_clantag();
+		if (clanTag.empty()) {
+			clanTag = "\"\""; // empty value http headers get pruned, so we use a pseudo-empty value
+		}
+		for (auto eliteTag : clantags::tags) {
+			auto eliteTagVA = utils::string::va("^%c%c%c%c%s", 1, eliteTag.second.width, eliteTag.second.height, 2, eliteTag.second.short_name.data());
+			if (strcmp(clanTag.c_str(), eliteTagVA) == 0) {
+				clanTag = eliteTag.first;
+				break;
+			}
+		}
+		std::string discordId = discord::get_discord_id();
+
+		std::string game_server_response = hmw_tcp_utils::GET_url(server_address, { { "ClanTag", clanTag },
+																					{ "DiscordID", discordId },
+																					{ "ClientSecret", "3ad3ae5755ee55b5759dbe16379746dfe33bc3af0a0a5166182c7587b522b429" }
+																				  }, true, 1500L, true, 3);
 
 		if (game_server_response.empty())
 		{
@@ -899,6 +922,12 @@ namespace server_list
 		}
 
 		nlohmann::json game_server_response_json = nlohmann::json::parse(game_server_response);
+
+		if (game_server_response_json.contains("error_code")) {
+			failed_to_join_reason = "Server rejected join request.";
+			return false;
+		}
+
 		std::string ping = game_server_response_json["ping"];
 
 		// Don't show servers that aren't using the same protocol!
