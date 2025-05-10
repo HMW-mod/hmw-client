@@ -19,9 +19,11 @@
 #include "fastfiles.hpp"
 #include "scripting.hpp"
 #include "party.hpp"
+#include "Matchmaking/hmw_matchmaking.hpp"
 
 #include "game/ui_scripting/execution.hpp"
 #include "game/scripting/execution.hpp"
+#include "gui/login_panel/user_profile.hpp"
 
 #include "ui_scripting.hpp"
 
@@ -40,6 +42,14 @@
 #include <iomanip>
 #include <sstream>
 #include <tcp/hmw_tcp_utils.hpp>
+
+#include "dvars.hpp"
+#include "component/Matchmaking/hmw_matchmaking.hpp"
+#include "component/gui/browser/server_browser.hpp"
+#include "component/debug_gui/gui.hpp"
+#include "component/gui/login_panel/login_panel.hpp"
+#include "gui/utils/ImGuiNotify.hpp"
+#include "debug_gui/gui.hpp"
 
 namespace ui_scripting
 {
@@ -216,199 +226,367 @@ namespace ui_scripting
 			lua["game"] = game_type;
 
 			game_type["getfps"] = [](const game&)
-			{
-				return fps::get_fps();
-			};
+				{
+					return fps::get_fps();
+				};
 
 			if (::game::environment::is_mp())
 			{
 				game_type["getping"] = [](const game&)
-				{
-					if ((*::game::client_state) == nullptr)
 					{
-						return 0;
-					}
+						if ((*::game::client_state) == nullptr)
+						{
+							return 0;
+						}
 
-					return (*::game::client_state)->ping;
-				};
+						return (*::game::client_state)->ping;
+					};
 			}
 
 			game_type["ismultiplayer"] = [](const game&)
-			{
-				return ::game::environment::is_mp();
-			};
+				{
+					return ::game::environment::is_mp();
+				};
 
 			game_type["addlocalizedstring"] = [](const game&, const std::string& string,
 				const std::string& value)
-			{
-				localized_strings::override(string, value);
-			};
-			
-			game_type["sharedset"] = [](const game&, const std::string& key, const std::string& value)
-			{
-				scripting::shared_table.access([key, value](scripting::shared_table_t& table)
 				{
-					table[key] = value;
-				});
-			};
+					localized_strings::override(string, value);
+				};
+
+			game_type["sharedset"] = [](const game&, const std::string& key, const std::string& value)
+				{
+					scripting::shared_table.access([key, value](scripting::shared_table_t& table)
+						{
+							table[key] = value;
+						});
+				};
 
 			game_type["sharedget"] = [](const game&, const std::string& key)
-			{
-				std::string result;
-				scripting::shared_table.access([key, &result](scripting::shared_table_t& table)
 				{
-					result = table[key];
-				});
-				return result;
-			};
+					std::string result;
+					scripting::shared_table.access([key, &result](scripting::shared_table_t& table)
+						{
+							result = table[key];
+						});
+					return result;
+				};
 
 			game_type["sharedclear"] = [](const game&)
-			{
-				scripting::shared_table.access([](scripting::shared_table_t& table)
 				{
-					table.clear();
-				});
-			};
+					scripting::shared_table.access([](scripting::shared_table_t& table)
+						{
+							table.clear();
+						});
+				};
 
 			game_type["assetlist"] = [](const game&, const std::string& type_string)
-			{
-				auto table_ = table();
-				auto index = 1;
-				auto type_index = -1;
-
-				for (auto i = 0; i < ::game::XAssetType::ASSET_TYPE_COUNT; i++)
 				{
-					if (type_string == ::game::g_assetNames[i])
+					auto table_ = table();
+					auto index = 1;
+					auto type_index = -1;
+
+					for (auto i = 0; i < ::game::XAssetType::ASSET_TYPE_COUNT; i++)
 					{
-						type_index = i;
+						if (type_string == ::game::g_assetNames[i])
+						{
+							type_index = i;
+						}
 					}
-				}
 
-				if (type_index == -1)
-				{
-					throw std::runtime_error("Asset type does not exist");
-				}
+					if (type_index == -1)
+					{
+						throw std::runtime_error("Asset type does not exist");
+					}
 
-				const auto type = static_cast<::game::XAssetType>(type_index);
-				fastfiles::enum_assets(type, [type, &table_, &index](const ::game::XAssetHeader header)
-				{
-					const auto asset = ::game::XAsset{type, header};
-					const std::string asset_name = ::game::DB_GetXAssetName(&asset);
-					table_[index++] = asset_name;
-				}, true);
+					const auto type = static_cast<::game::XAssetType>(type_index);
+					fastfiles::enum_assets(type, [type, &table_, &index](const ::game::XAssetHeader header)
+						{
+							const auto asset = ::game::XAsset{ type, header };
+							const std::string asset_name = ::game::DB_GetXAssetName(&asset);
+							table_[index++] = asset_name;
+						}, true);
 
-				return table_;
-			};
+					return table_;
+				};
 
 			game_type["getweapondisplayname"] = [](const game&, const std::string& name)
-			{
-				const auto alternate = name.starts_with("alt_");
-				const auto weapon = ::game::G_GetWeaponForName(name.data());
+				{
+					const auto alternate = name.starts_with("alt_");
+					const auto weapon = ::game::G_GetWeaponForName(name.data());
 
-				char buffer[0x400] = {0};
-				::game::CG_GetWeaponDisplayName(weapon, alternate, buffer, 0x400);
+					char buffer[0x400] = { 0 };
+					::game::CG_GetWeaponDisplayName(weapon, alternate, buffer, 0x400);
 
-				return std::string(buffer);
-			};
+					return std::string(buffer);
+				};
 
 			game_type["getattachmentdisplayname"] = [](const game&, const std::string& name)
-			{				
-				auto attachment = ::game::DB_FindXAssetHeader(::game::XAssetType::ASSET_TYPE_ATTACHMENT, name.data(), 1).attachment;
+				{
+					auto attachment = ::game::DB_FindXAssetHeader(::game::XAssetType::ASSET_TYPE_ATTACHMENT, name.data(), 1).attachment;
 
-				if (!attachment) return std::string("");
+					if (!attachment) return std::string("");
 
-				return std::string(attachment->szDisplayName);
-			};
+					return std::string(attachment->szDisplayName);
+				};
 
 			game_type["getloadedmod"] = [](const game&)
-			{
-				/*
-				const auto& path = mods::get_mod();
-				return path.value_or("");
-				*/
-				return "";
-			};
+				{
+					/*
+					const auto& path = mods::get_mod();
+					return path.value_or("");
+					*/
+					return "";
+				};
 
 			game_type["sendStats"] = [](const game&)
-			{
-				stats::send_stats();
-			};
+				{
+					stats::send_stats();
+				};
 
 			game_type["getkillcamweaponinfo"] = [](const game&, const int weapon_id, bool is_alt_weapon)
-			{
-				std::vector<std::string> weapon_info{};
+				{
+					std::vector<std::string> weapon_info{};
 
-				auto weaponHudMaterial = ::game::BG_KillIcon(weapon_id, is_alt_weapon);
+					auto weaponHudMaterial = ::game::BG_KillIcon(weapon_id, is_alt_weapon);
 
-				if (weaponHudMaterial)
-					weapon_info.push_back(weaponHudMaterial->info.name);
-				else
-					weapon_info.push_back("");
+					if (weaponHudMaterial)
+						weapon_info.push_back(weaponHudMaterial->info.name);
+					else
+						weapon_info.push_back("");
 
-				auto weaponHudIsFlipped = ::game::BG_FlipKillIcon(weapon_id, is_alt_weapon);
+					auto weaponHudIsFlipped = ::game::BG_FlipKillIcon(weapon_id, is_alt_weapon);
 
-				weapon_info.push_back(std::to_string(!!weaponHudIsFlipped));
+					weapon_info.push_back(std::to_string(!!weaponHudIsFlipped));
 
-				return weapon_info;
-			};
+					return weapon_info;
+				};
 
 			game_type["virtuallobbypresentable"] = [](const game&)
-			{
-				::game::Dvar_SetFromStringByNameFromSource("virtualLobbyPresentable", "1", ::game::DVAR_SOURCE_INTERNAL);
-			};
+				{
+					::game::Dvar_SetFromStringByNameFromSource("virtualLobbyPresentable", "1", ::game::DVAR_SOURCE_INTERNAL);
+				};
 
 			game_type["getcurrentgamelanguage"] = [](const game&)
-			{
-				return steam::SteamApps()->GetCurrentGameLanguage();
-			};
+				{
+					return steam::SteamApps()->GetCurrentGameLanguage();
+				};
 
 			game_type["isdefaultmaterial"] = [](const game&, const std::string& material)
-			{
-				return static_cast<bool>(::game::DB_IsXAssetDefault(::game::ASSET_TYPE_MATERIAL,
-					material.data()));
-			};
+				{
+					return static_cast<bool>(::game::DB_IsXAssetDefault(::game::ASSET_TYPE_MATERIAL,
+						material.data()));
+				};
 
 			game_type["getcommandbind"] = [](const game&, const std::string& cmd)
-			{
-				const auto binding = ::game::Key_GetBindingForCmd(cmd.data());
-				auto key = -1;
-				for (auto i = 0; i < 256; i++)
 				{
-					if (::game::playerKeys[0].keys[i].binding == binding)
+					const auto binding = ::game::Key_GetBindingForCmd(cmd.data());
+					auto key = -1;
+					for (auto i = 0; i < 256; i++)
 					{
-						key = i;
+						if (::game::playerKeys[0].keys[i].binding == binding)
+						{
+							key = i;
+						}
 					}
-				}
 
-				if (key == -1)
-				{
-					return ::game::UI_SafeTranslateString("KEY_UNBOUND");
-				}
-				else
-				{
-					const auto loc_string = ::game::Key_KeynumToString(key, 1, 0);
-					return ::game::UI_SafeTranslateString(loc_string);
-				}
-			};
+					if (key == -1)
+					{
+						return ::game::UI_SafeTranslateString("KEY_UNBOUND");
+					}
+					else
+					{
+						const auto loc_string = ::game::Key_KeynumToString(key, 1, 0);
+						return ::game::UI_SafeTranslateString(loc_string);
+					}
+				};
 
 			game_type["openlink"] = [](const game&, const std::string& name)
-			{
-				const auto links = motd::get_links();
-				const auto link = links.find(name);
-				if (link == links.end())
 				{
-					return;
-				}
+					const auto links = motd::get_links();
+					const auto link = links.find(name);
+					if (link == links.end())
+					{
+						return;
+					}
 
-				ShellExecuteA(nullptr, "open", link->second.data(), nullptr, nullptr, SW_SHOWNORMAL);
-			};
+					ShellExecuteA(nullptr, "open", link->second.data(), nullptr, nullptr, SW_SHOWNORMAL);
+				};
 
 			game_type["islink"] = [](const game&, const std::string& name)
+				{
+					const auto links = motd::get_links();
+					const auto link = links.find(name);
+					return link != links.end();
+				};
+
+			auto utils = table();
+			lua["utils"] = utils;
+			utils["openlink"] = [](const game&, const std::string& url) {
+				if (url.empty()) {
+					return;
+				}
+				ShellExecuteA(nullptr, "open", url.data(), nullptr, nullptr, SW_SHOWNORMAL);
+				};
+
+			auto matchmaking = table();
+			lua["matchmaking"] = matchmaking;
+			matchmaking["login"] = [](const game&, const std::string& email, const std::string& password) {
+				if (email.empty() || password.empty()) {
+					return;
+				}
+				//hmw_matchmaking::Auth::login(email, password); OLD
+				};
+
+			auto imguiLui = table();
+			lua["imgui"] = imguiLui;
+			imguiLui["openLoginPanel"] = [](const game&)
+				{
+					login_panel::toggled_login_panel = true;
+					login_panel::current_panel_state = login_panel::LoginPanelState::MAIN_PANEL;
+				};
+			imguiLui["openMyProfile"] = [](const game&)
+				{
+					login_panel::toggled_login_panel = true;
+					login_panel::current_panel_state = login_panel::LoginPanelState::LOGGED_IN;
+					// Do you imgui junk
+				};
+
+			imguiLui["openServerBrowser"] = [](const game&)
+				{
+					server_browser::toggle();
+					server_browser::refresh_current_page();
+				};
+			imguiLui["isloggedin"] = [](const game&)
 			{
-				const auto links = motd::get_links();
-				const auto link = links.find(name);
-				return link != links.end();
+				return user_profile::is_logged_in();
 			};
+
+			auto matchmakerLui = table();
+			lua["matchmaker"] = matchmakerLui;
+
+			matchmakerLui["findmatch"] = [](const game&)
+				{
+					scheduler::once([]() {
+						std::string mode = hmw_matchmaking::MatchMaker::get_selected_mode();
+						if (mode.empty()) {
+							mode = "any";
+						}
+
+						hmw_matchmaking::MatchMaker::find_match(mode);
+					}, scheduler::network);
+				};
+
+			matchmakerLui["getsearchstatus"] = [](const game&)
+				{
+					return hmw_matchmaking::MatchMaker::get_search_status();
+				};
+
+			matchmakerLui["stopmatchmaking"] = [](const game&)
+				{
+					hmw_matchmaking::MatchMaker::stop_matchmaking();
+				};
+
+			matchmakerLui["setplaylist"] = [](const game&, std::string playlist)
+			{
+				hmw_matchmaking::MatchMaker::set_playlist_type(playlist);
+			};
+
+			matchmakerLui["setselectedmode"] = [](const game&, std::string mode)
+			{
+				hmw_matchmaking::MatchMaker::set_selected_mode(mode);
+			};
+
+			matchmakerLui["getselectedmode"] = [](const game&)
+				{
+					return hmw_matchmaking::MatchMaker::get_selected_mode();
+				};
+
+			matchmakerLui["getmapid"] = [](const game&)
+				{
+					return hmw_matchmaking::MatchMaker::get_map_id();
+				};
+
+			matchmakerLui["getmapname"] = [](const game&)
+				{
+					return hmw_matchmaking::MatchMaker::get_map_name();
+				};
+
+			matchmakerLui["setpartymax"] = [](const game&, int amt)
+				{
+					hmw_matchmaking::MatchMaker::set_party_max(amt);
+				};
+
+			matchmakerLui["setpartysize"] = [](const game&, int amt)
+				{
+					hmw_matchmaking::MatchMaker::set_party_limit(amt);
+				};
+
+			matchmakerLui["setmatchmakingmatchstate"] = [](const game&, bool state)
+				{
+					hmw_matchmaking::MatchMaker::set_matchmaking_match_state(state);
+				};
+
+			matchmakerLui["getgamemode"] = [](const game&)
+				{
+					return hmw_matchmaking::MatchMaker::get_gamemode();
+				};
+
+			matchmakerLui["togglepartylist"] = [](const game&, bool state, bool refresh_lui)
+				{
+					hmw_matchmaking::MatchMaker::set_party_screen(state);
+					if (refresh_lui) {
+						scheduler::once([]() {
+							command::execute("lui_restart");
+							command::execute("lui_open menu_xboxlive_lobby");
+							}, scheduler::main);
+					}
+				};
+
+			matchmakerLui["showingpartylist"] = [](const game&)
+				{
+					return hmw_matchmaking::MatchMaker::showing_party_screen();
+				};
+			
+			matchmakerLui["getplayercount"] = [](const game&)
+				{
+					return hmw_matchmaking::MatchMaker::get_lobby_players_size();
+				};
+
+			matchmakerLui["getplayer"] = [](const game&, int index)
+				{
+					return hmw_matchmaking::MatchMaker::get_lobby_player(index);
+				};
+
+			auto userProfileLui = table();
+			lua["user_profile"] = userProfileLui;
+			userProfileLui["isloggedin"] = [](const game&) 
+				{
+					return user_profile::is_logged_in();
+				};
+			userProfileLui["autologin"] = [](const game&)
+				{
+					hmw_matchmaking::Auth::attempt_autologin();
+				};
+			userProfileLui["getusername"] = [](const game&) 
+			{
+					return user_profile::get_username();
+			};
+
+			userProfileLui["getprestige"] = [](const game&)
+				{
+					return user_profile::get_prestige();
+				};
+
+			userProfileLui["getrankxp"] = [](const game&)
+				{
+					return user_profile::get_rank_xp();
+				};
+
+			userProfileLui["getrank"] = [](const game&)
+				{
+					return user_profile::get_rank();
+				};
 
 			auto hud_extras = table();
 			lua["hudextras"] = hud_extras;
@@ -417,12 +595,13 @@ namespace ui_scripting
 					return;
 				}
 
-				notify("showvoicemessage", {});
+				//notify("showvoicemessage", {});
+				ImGui::InsertNotification({ ImGuiToastType::Info, 5000, "Voice chat is unmoderated and not recorded.\nHave fun! :)" });
 				voice_chat_globals::set_voice_message_shown_state(true);
-				scheduler::once([=]()
-				{
-					notify("hidevoicemessage", {});
-				}, scheduler::pipeline::main, 5s);
+				//scheduler::once([=]()
+				//{
+				//	notify("hidevoicemessage", {});
+				//}, scheduler::pipeline::main, 5s);
 			};
 
 			// In lua hudextras:gettime("%H:%M:%S %p") // Example: 02:30:15 PM
@@ -540,6 +719,7 @@ namespace ui_scripting
 			};
 
 			motd_table["hasmotd"] = motd::has_motd;
+
 		}
 
 		void start()
@@ -818,6 +998,8 @@ namespace ui_scripting
 		return *game::hks::lua_state != nullptr;
 	}
 
+
+
 	class component final : public component_interface
 	{
 	public:
@@ -830,6 +1012,10 @@ namespace ui_scripting
 			}
 
 			dvars::register_bool("r_preloadShadersFrontendAllow", true, game::DVAR_FLAG_SAVED, "Allow shader popup on startup");
+
+			dvars::register_float("hud_color_r", gui::hud_color_r, 0.00, 1.00, game::DVAR_FLAG_SAVED, "Red color for hud");
+			dvars::register_float("hud_color_g", gui::hud_color_g, 0.00, 1.00, game::DVAR_FLAG_SAVED, "Green color for hud");
+			dvars::register_float("hud_color_b", gui::hud_color_b, 0.00, 1.00, game::DVAR_FLAG_SAVED, "Blue color for hud");
 
 			utils::hook::call(0x25E809_b, db_find_x_asset_header_stub);
 			utils::hook::call(0x25E6BB_b, db_find_x_asset_header_stub);

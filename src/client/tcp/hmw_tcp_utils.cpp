@@ -8,6 +8,7 @@
 #include "component/fastfiles.hpp"
 #include "component/party.hpp"
 #include "component/command.hpp"
+#include "component/discord.hpp"
 
 #include "steam/steam.hpp"
 
@@ -23,6 +24,44 @@
 
 #include <curl/curl.h>
 #include "version.hpp"
+#include <component/discord.hpp>
+
+#include <component/Matchmaking/hmw_matchmaking.hpp>
+#include <utils/hwid.hpp>
+
+
+
+// @Barbossa
+// this shit works for name and ping
+// level only works for one client on the server cuz shrug
+// prestige iunno u will figure it out
+namespace {
+	std::vector<nlohmann::json> getPlayerInfos() {
+		std::vector<nlohmann::json> infos;
+		int maxClients = *game::svs_numclients;
+		for (int i = 0; i < maxClients; i++) {
+			game::gentity_s* ent = &game::g_entities[i];
+			if (ent && ent->client && ent->client->name[0] != '\0') {
+				nlohmann::json player;
+				std::string clientName(ent->client->name);
+				player["name"] = clientName;
+				player["ping"] = game::SV_GetClientPing(i);
+				if (game::svs_clients && game::svs_clients[i] != nullptr &&
+					!IsBadReadPtr(game::svs_clients[i], sizeof(game::clientInfo_t))) {
+					game::clientInfo_t* ci = reinterpret_cast<game::clientInfo_t*>(game::svs_clients[i]);
+					player["level"] = ci->rankDisplayLevel;
+					player["prestige"] = ci->prestige_mp;
+				}
+				else {
+					player["level"] = 0;
+					player["prestige"] = 0;
+				}
+				infos.push_back(player);
+			}
+		}
+		return infos;
+	}
+}
 
 namespace hmw_tcp_utils {
 
@@ -35,6 +74,7 @@ namespace hmw_tcp_utils {
 	namespace MasterServer {
 
 		std::string master_server_url = "https://ms.horizonmw.org/game-servers";
+		std::string matchmaking_master_server_url = "https://ms-staging.horizonmw.org/matchmaking-servers";
 
 		bool get_dvar_netip_for_heartbeat(std::string& addr)
 		{
@@ -116,9 +156,15 @@ namespace hmw_tcp_utils {
 		const char* get_master_server() {
 			return master_server_url.c_str();
 		}
+
+		const char* get_matchmaking_master_server() {
+			return matchmaking_master_server_url.c_str();
+		}
 	}
 
 	namespace GameServer {
+		const std::string HTTP_EMPTY = "\"\"";
+
 		void mg_fn(mg_connection* c, int ev, void* ev_data)
 		{
 			if (ev == MG_EV_HTTP_MSG) {
@@ -145,13 +191,111 @@ namespace hmw_tcp_utils {
 						std::string headerName(name->buf, name->len);
 						std::string headerVal(value->buf, value->len);
 						headers.emplace(headerName, headerVal);
-
-						// FUTURE: Process any header names here
-						
 					}
 
 					std::string data = getInfo_Json();
 					mg_http_reply(c, 200, "", data.c_str());
+				}
+				else if (mg_match(hm->uri, mg_str("/getMatchmakingInfo"), NULL)) {
+					if (ev == MG_EV_OPEN) { // Init stuff here
+						// Nothing atm
+					}
+					else if (ev == MG_EV_CLOSE) {
+						// Connection closed
+						return;
+					}
+
+					bool is_valid_matchmaking_server = true;
+					if (!is_valid_matchmaking_server) {
+						mg_http_reply(c, 400, "", "{%m:%d,\n%m:%s}\n", MG_ESC("error_code"), 400, MG_ESC("reason"), "\"Invalid server.\"");
+						return;
+					}
+
+					std::map<std::string, std::string> headers;
+
+					for (size_t i = 0; i < MG_MAX_HTTP_HEADERS && hm->headers[i].name.len > 0; i++) {
+						struct mg_str* name = &hm->headers[i].name;
+						struct mg_str* value = &hm->headers[i].value;
+
+						// Convert the mg_str to std::string
+						std::string headerName(name->buf, name->len);
+						std::string headerVal(value->buf, value->len);
+						headers.emplace(headerName, headerVal);
+					}
+
+					std::string data = getMatchmakingInfo_Json();
+					mg_http_reply(c, 200, "", data.c_str());
+				}
+				else if (mg_match(hm->uri, mg_str("/join"), NULL)) {
+					std::map<std::string, std::string> headers;
+
+					for (size_t i = 0; i < MG_MAX_HTTP_HEADERS && hm->headers[i].name.len > 0; i++) {
+						struct mg_str* name = &hm->headers[i].name;
+						struct mg_str* value = &hm->headers[i].value;
+
+						// Convert the mg_str to std::string
+						std::string headerName(name->buf, name->len);
+						std::string headerVal(value->buf, value->len);
+						headers.emplace(headerName, headerVal);
+					}
+
+					// Check for specific headers
+					auto clanTagIt = headers.find("ClanTag");
+					auto discordIdIt = headers.find("DiscordID");
+					auto clientSecretIt = headers.find("ClientSecret");
+
+					if (clanTagIt != headers.end() && discordIdIt != headers.end() && clientSecretIt != headers.end()) {
+						// Both headers found
+						std::string clanTagValue = clanTagIt->second;
+						std::string discordIdValue = discordIdIt->second;
+						std::string clientSecretValue = clientSecretIt->second;
+
+						// Validate clantag here with assosiated discord id. Handle if discord id is not in use
+						std::string response = "ClanTag: " + clanTagValue + ", DiscordID: " + discordIdValue;
+						//console::info("Found headers: %s", response.data());
+
+						// Check if clantag contains any of "^0" to "^9" or "^:"
+						std::vector<std::string> invalid_sequences = { "^0", "^1", "^2", "^3", "^4", "^5", "^6", "^7", "^8", "^9", "^:" };
+						bool contains_invalid_sequence = false;
+
+						for (const auto& seq : invalid_sequences) {
+							if (clanTagValue.find(seq) != std::string::npos) {
+								contains_invalid_sequence = true;
+								break;
+							}
+						}
+
+						if (contains_invalid_sequence) {
+							mg_http_reply(c, 400, "", "{%m:%d,\n%m:%s}\n", MG_ESC("error_code"), 400, MG_ESC("reason"), "\"Invalid clantag. Invalid characters.\"");
+							return;
+						}
+
+						// Clantag is > max length
+						if (clanTagValue.length() > 4) {
+							mg_http_reply(c, 400, "", "{%m:%d,\n%m:%s}\n", MG_ESC("error_code"), 400, MG_ESC("reason"), "Invalid clantag. Too long.");
+							return;
+						}
+
+						bool is_valid_clantag = discord::verify_clantag_with_discord(clanTagValue.data(), discordIdValue);
+
+						if (!is_valid_clantag) {
+							mg_http_reply(c, 400, "", "{%m:%d,\n%m:%s}\n", MG_ESC("error_code"), 400, MG_ESC("reason"), "\"Invalid clantag. Unauthorized.\"");
+							return;
+						}
+
+						std::string expectedHash = "3ad3ae5755ee55b5759dbe16379746dfe33bc3af0a0a5166182c7587b522b429";
+						bool valid_client_secret = clientSecretValue == expectedHash;
+
+						if (!valid_client_secret) {
+							mg_http_reply(c, 400, "", "{%m:%d,\n%m:%s}\n", MG_ESC("error_code"), 400, MG_ESC("reason"), "\"Invalid client secret. Unauthorized.\"");
+							return;
+						}
+
+						// If you want to reject a request. Change 200 to 400
+						std::string data = getInfo_Json();
+						mg_http_reply(c, 200, "", data.c_str());
+						return;
+					}
 				}
 			}
 		}
@@ -259,7 +403,7 @@ namespace hmw_tcp_utils {
 		void check_download_map_tcp(const nlohmann::json infoJson, std::vector<download::file_t>& files)
 		{
 			const std::string mapname = infoJson["mapname"];
-			if (fastfiles::is_stock_map(mapname))
+			if (fastfiles::is_stock_map(mapname) || fastfiles::is_dlc_map(mapname))
 			{
 				return;
 			}
@@ -400,10 +544,74 @@ std::string getInfo_Json()
 			}
 		}
 
+		std::vector<nlohmann::json> playerInfos = getPlayerInfos();
+		nlohmann::json playersJson = nlohmann::json::array();
+		for (const auto& playerInfo : playerInfos) {
+			playersJson.push_back(playerInfo);
+		}
+		data["players"] = playersJson;
+
 		std::string jsonString = data.dump();
 		return jsonString;
+}
+
+std::string getMatchmakingInfo_Json() {
+	// Get the base info JSON
+	std::string getInfo = getInfo_Json();
+
+	// Parse the JSON string into an nlohmann::json object
+	nlohmann::json data = nlohmann::json::parse(getInfo);
+
+	// Add additional matchmaking information
+	data["players"] = nlohmann::json::object(); // Create an empty JSON object for players
+
+	// Example player data
+	std::vector<nlohmann::json> players = {
+		{{"name", "Player1"}, {"xp", 12313}, {"level", 45}, {"prestige", 3}, {"clantag", "abcd"}},
+		{{"name", "Player2"}, {"xp", 22123}, {"level", 30}, {"prestige", 1}, {"clantag", "xyz"}}
+	};
+
+	// Add player information
+	for (size_t i = 0; i < players.size(); ++i) {
+		data["players"][std::to_string(i)] = players[i];
 	}
 
+	// Add lobby timer
+	data["lobbyTimer"] = 5;
+
+	// Add next maps with detailed information, including votes
+	std::vector<nlohmann::json> nextMaps = {
+		{{"name", "map_1"}, {"mode", "tdm"}, {"votes", 10}},
+		{{"name", "map_2"}, {"mode", "ctf"}, {"votes", 20}},
+		{{"name", "map_3"}, {"mode", "ffa"}, {"votes", 15}}
+	};
+
+	// Assign detailed map info to next_maps
+	data["next_maps"] = nlohmann::json::object();
+	for (size_t i = 0; i < nextMaps.size(); ++i) {
+		data["next_maps"][std::to_string(i)] = nextMaps[i];
+	}
+
+	// Add selected map with detailed information
+	nlohmann::json selectedMap = { {"name", "map_1"}, {"mode", "tdm"} };
+	data["selected_map"] = selectedMap;
+
+	// Add match_started field
+	data["match_started"] = false; // Default value; set dynamically as needed
+
+	// Add reserved slots
+	nlohmann::json reservedSlots = {
+		{"0", {{"player_name", "user_name"}}}
+	};
+	data["reserved"] = reservedSlots;
+
+	// Serialize back to JSON string
+	std::string result = data.dump();
+	return result;
+}
+
+
+// The main GET request used for getting and handling game servers
 std::string GET_url(const char* url, const std::map<std::string, std::string>& headers, bool addPing, long timeout, bool doRetry, int retryMax) {
 	CURL* curl;
 	CURLcode res;
@@ -464,7 +672,7 @@ std::string GET_url(const char* url, const std::map<std::string, std::string>& h
 			break;  // Stop retrying if host can't be resolved
 		}
 		else if (res == CURLE_COULDNT_CONNECT) {
-			console::info("Could not connect to host. Retrying...");
+			//console::info("Could not connect to host. Retrying...");
 		}
 		else if (res == CURLE_OPERATION_TIMEDOUT) {
 			console::info("Request timed out. Retrying...");
@@ -495,7 +703,7 @@ std::string GET_url(const char* url, const std::map<std::string, std::string>& h
 		// If we do not actually want this GET request to retry, only used by localhost check
 		if (!doRetry) {
 			// We do not want to retry
-			console::info("Retry aborted.");
+			//console::info("Retry aborted.");
 			break;
 		}
 
@@ -513,6 +721,136 @@ std::string GET_url(const char* url, const std::map<std::string, std::string>& h
 
 	return response;  // Return an empty response if all retries failed
 }
+
+// A simplier GET request intended to be used with GET requests that only need a bearer token. Not as complex as the GET request used in the server browser
+std::pair<std::string, long> GET_EASY_url(const char* url, const std::string& bearerToken, long timeout)
+{
+	CURL* curl = curl_easy_init(); // Initialize CURL
+	if (!curl) {
+		throw std::runtime_error("Failed to initialize CURL");
+	}
+
+	std::string response;
+	long httpResponseCode = 0; // To store the HTTP response code
+	CURLcode res;
+	struct curl_slist* headers = nullptr;
+
+	try {
+		// Set the URL
+		curl_easy_setopt(curl, CURLOPT_URL, url);
+
+		// Set the Bearer token as the Authorization header
+		std::string authHeader = "Authorization: Bearer " + bearerToken;
+		headers = curl_slist_append(headers, authHeader.c_str());
+		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+		// Set timeout
+		curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout);
+
+		// Capture the response
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, GET_url_WriteCallback);
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+
+		// Perform the request
+		res = curl_easy_perform(curl);
+		if (res != CURLE_OK) {
+			throw std::runtime_error(std::string("CURL request failed: ") + curl_easy_strerror(res));
+		}
+
+		// Get the HTTP status code
+		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpResponseCode);
+	}
+	catch (...) {
+		curl_easy_cleanup(curl);
+		if (headers) {
+			curl_slist_free_all(headers);
+		}
+		throw; // Re-throw the exception
+	}
+
+	// Cleanup
+	curl_easy_cleanup(curl);
+	if (headers) {
+		curl_slist_free_all(headers);
+	}
+
+	return { response, httpResponseCode };
+}
+
+std::string POST_url(const char* url, std::string body, long timeout)
+{
+	CURL* curl = curl_easy_init(); // Initialize a CURL handle
+	if (!curl) {
+		throw std::runtime_error("Failed to initialize CURL");
+	}
+
+	std::string response; // To store the server response
+	CURLcode res;
+	struct curl_slist* headers = nullptr;
+
+	try {
+		curl_easy_setopt(curl, CURLOPT_URL, url); // Set the URL
+		curl_easy_setopt(curl, CURLOPT_POST, 1L); // Use POST method
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str()); // Set POST body
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, body.size()); // Set POST body size
+
+		// Set Content-Type header to JSON
+		headers = curl_slist_append(headers, "Content-Type: application/json");
+		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+		// Set timeout
+		curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout);
+
+		// Set the callback to capture the response
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, GET_url_WriteCallback);
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+
+		// Perform the request
+		res = curl_easy_perform(curl);
+		if (res != CURLE_OK) {
+			throw std::runtime_error(std::string("CURL request failed: ") + curl_easy_strerror(res));
+		}
+	}
+	catch (...) {
+		curl_easy_cleanup(curl); // Clean up CURL handle
+		throw; // Rethrow the exception
+	}
+
+	curl_easy_cleanup(curl); // Clean up CURL handle
+	return response; // Return the response string
+}
+
+std::string PUT_url(const char* url, std::string body, long timeout)
+	{
+		CURL* curl = curl_easy_init();
+		if (!curl) {
+			throw std::runtime_error("Failed to initialize CURL");
+		}
+		std::string response;
+		CURLcode res;
+		struct curl_slist* headers = nullptr;
+		try {
+			curl_easy_setopt(curl, CURLOPT_URL, url);
+			curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
+			curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+			curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, body.size());
+			headers = curl_slist_append(headers, "Content-Type: application/json");
+			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+			curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout);
+			curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, GET_url_WriteCallback);
+			curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+			res = curl_easy_perform(curl);
+			if (res != CURLE_OK) {
+				throw std::runtime_error(std::string("CURL request failed: ") + curl_easy_strerror(res));
+			}
+		}
+		catch (...) {
+			curl_easy_cleanup(curl);
+			throw;
+		}
+		curl_easy_cleanup(curl);
+		return response;
+	}
 
 	size_t GET_url_WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
 		((std::string*)userp)->append((char*)contents, size * nmemb);

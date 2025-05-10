@@ -60,14 +60,12 @@
 #undef min
 #endif
 
-#ifdef DEBUG
 //#define DW_DEBUG
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <backends/imgui_impl_dx11.h>
 #include <backends/imgui_impl_win32.h>
 #include <misc/cpp/imgui_stdlib.h>
-#endif
 
 #define MSG_BOX_INFO(message) MessageBoxA(nullptr, message, "hmw-mod: INFORMATION", MB_ICONINFORMATION);
 #define MSG_BOX_WARN(message) MessageBoxA(nullptr, message, "hmw-mod: WARNING", MB_ICONWARNING);
