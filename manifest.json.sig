@@ -239,12 +239,12 @@ Hash: SHA256
         "hmw-usermaps\\mp_bravo\\mp_bravo.ff": "0099d678b1e97f116c61871882e3b2adeca02830ebcf6f1a1f62600703b8f898",
         "hmw-usermaps\\mp_bravo\\mp_bravo.pak": "0bd7b0bfd7cce4b74f90fc826a62bea380589931e444ead628445cfe16ca7e2f",
         "hmw-usermaps\\mp_derail\\mp_derail_load.ff": "f5c4df51552c00510adf85f1193b57633c0072cc18ca5fa13393f40011a8af37",
-        "hmw-usermaps\\mp_derail\\mp_derail.ff": "7c73344db93dd4729fa336eb582c0c2ede78c688e4ac1a0c790eb22a8b15846a",
-        "hmw-usermaps\\mp_derail\\mp_derail.pak": "fed6184cfc181e76f9e7b2516b1162a026646c9ebd48675ce21c2a752a32b06b",
+        "hmw-usermaps\\mp_derail\\mp_derail.ff": "71bf2438c1d0418b603823fbd00eb2d61272c98d14aa4910a6577c42669abe03",
+        "hmw-usermaps\\mp_derail\\mp_derail.pak": "3152477e66481f3d0a3495c0f30244cf7b40df8ca95efee99bdee9f7bf367f46",
         "hmw-usermaps\\mp_dome\\mp_dome_load.ff": "37efb8c96c52e56c982fecdadeaef3fb92cec49bfe9bcdf8314379bfb11140f9",
         "hmw-usermaps\\mp_dome\\mp_dome.ff": "a4de6ec645d0ecd1c9c01d538b76e2992faeba608c2fe3c6a62e1052e019cb47",
         "hmw-usermaps\\mp_dome\\mp_dome.pak": "be9c5d7e211733658d4507828968006b7894117e943f8f94fc3e5c288d5db41d",
-        "hmw-usermaps\\mp_favela\\mp_favela.ff": "c8bc43b5db77b184d7503ea48d39fd71fb94e225dad223fb5a05fdc55565b288",
+        "hmw-usermaps\\mp_favela\\mp_favela.ff": "a394e8eb6121308cb66587115674d2a2f8cf5708be8fb9b2d277da4dbb81927f",
         "hmw-usermaps\\mp_favela\\mp_favela.pak": "7eee996ce3823360218ad60a2ba000464cbd871dfd883bf6f7a96bdb88aa1247",
         "hmw-usermaps\\mp_hardhat\\mp_hardhat_load.ff": "2936e49de8c1142156721fa2f8edc8c5452d9d989aeec76322754ec67060b917",
         "hmw-usermaps\\mp_hardhat\\mp_hardhat.ff": "59744e1959175dc9c1e20e8d2850a5eaf80e93ce8b2700e4736b48beb7846834",
@@ -259,10 +259,10 @@ Hash: SHA256
         "hmw-usermaps\\mp_paris\\mp_paris.ff": "4dd8786fb12e87747859414d389413487bc6f7d1844316001ce1da768fee567f",
         "hmw-usermaps\\mp_paris\\mp_paris.pak": "feea4246c99f76b6d4717248cf16d4c7ed59fae25108152bb7f2fb20065fe82d",
         "hmw-usermaps\\mp_rust\\mp_rust_load.ff": "b70f429bd24a9b6be09eae462d88987478e27eaa8825f578f931e13e2be4ad82",
-        "hmw-usermaps\\mp_rust\\mp_rust.ff": "bff074b6a9de3fcb0cf9d07fd244a679170d864a0fde94f26314311f19200e26",
+        "hmw-usermaps\\mp_rust\\mp_rust.ff": "4d0fb4a264fb3b073d325b541f02ba9e83e922b35b2762d9687d040f4f3056a8",
         "hmw-usermaps\\mp_rust\\mp_rust.pak": "7e1c3c2a769bee0356303c032286e08262ad08348afa9d96df8c204b68eed439",
         "hmw-usermaps\\mp_terminal\\mp_terminal_load.ff": "c62bf6f962746e7da30e33235b06bf7b54ac692a32324b951b272032ec3d61d1",
-        "hmw-usermaps\\mp_terminal\\mp_terminal.ff": "be06e6e6b978f76b36ee6479ddbc618b39480f44c5d91669e27603aa6b159db1",
+        "hmw-usermaps\\mp_terminal\\mp_terminal.ff": "2ab7ce1d0e4f8c3b19f6a855901171e48aad732100aabdb6fd0bf3d5beb1822f",
         "hmw-usermaps\\mp_terminal\\mp_terminal.pak": "eb954f61d20674b1203ee240333f01f5ed563e97f83800a0f3d24a37f6844e9c",
         "hmw-usermaps\\mp_underground\\mp_underground_load.ff": "8bf11493348d4e95195d4b1acd559901f9a5856255fe205b8d2635bc271004a8",
         "hmw-usermaps\\mp_underground\\mp_underground.ff": "d20a94a00cd79d7932e6daea4f6cd5fe83d15025783ff68e976940b130bc5fc2"
@@ -285,22 +285,22 @@ Hash: SHA256
     "minidumps",
     "__h1Exe"
   ],
-  "ManifestGuid": "19cecc52-9b52-4ff9-91c1-59a06967b152"
+  "ManifestGuid": "dcc4a232-7d9f-46b4-94a0-cddbb01fa751"
 }
 
 -----BEGIN PGP SIGNATURE-----
 Version: BouncyCastle.NET Cryptography (net6.0) v2.4.0+83ebf4a805
 
-iQGvBAEBCAAZBQJocBJzEhxIb3Jpem9uTVcgVXBkYXRlcgAKCRD3FpcLQMPgKvb+
-C/9aRzXkRlGltV9hWDdjt+4sQiGWJYOgnCKakSRMmwYGpx+s8yhWC1P7Hr2mVfZ+
-npNCAyTWAhYfWWCjDP+5ZSwaFuf0tJ4gnMZXIifLTYg0NIdX9oZ29PxhCZLNFzUk
-Rn9DatRE12YtLk4ROF6PsBiQY5+ERmQ6gB2nQOmIgh/KEU2DHa/xdI+4/g2BXt0f
-WAI0ATTIv/7gdO5lYInTqeU+ewkuTKnw4iUwSARYS6xhq6v0t3baqzhs3X1qD/4k
-KT8p702BSYRtf5M/gsD7yghC2flKQZanrpG1Gt0ZDwNHZdgLv6x3UUu+SRbvSlPa
-O1IZZo7D6/dvCkSqqr3+8PLxaUm+Ez3LrP7cPsbMY4EaZbAzdABgad5Yocb1ROaI
-t3xKh175jFi63wM+akdLdGls6B9rzaVsnJp/+iZvYcBf/7iI7GDb1Wu1tXp8y21Q
-on9BXSMigecNCm3dyyZ5ac8+O0OQA/CVSqxOLgEs9SZkYx9gwWt0Ya1mrjiZnY6m
-7o8=
-=DryA
+iQGvBAEBCAAZBQJocFQOEhxIb3Jpem9uTVcgVXBkYXRlcgAKCRD3FpcLQMPgKpoV
+C/9oIpGfLdyQ0t96XIUuR1yAuBSV3kh82NVpiC+sStYgfb6RNZEK4HRHj7YMdvr2
+T5AeQOQZmcpuVunWMLQ2S9tw3P7i2fGL5m/HrRGNzUt1szh12v3z70Jz+ePMcbwq
+d0fCfSFsRVUhVcz8s/ei6UohT5k0chQaBPIWSLddRDOFjiU86bZWcu3ogh//YTul
+ifuMndQo22vvUozoq+HOc5x/NeCY4+KGwSsF7zHN/wkT1YXoM2z+7CT6hw8GLWxS
+bczee33W9k67RT2AumcWU0zQB2uYiFSakUfk+/IvX3Px/9BWEtUavG0DyQsViTBd
+vmGfzNSqTVWRY+imSJSfnPvVrIvLYjCK831NIAiP9HiYNv5MAaX1YkKlv5Af1xv+
+QfciujZq4bNmN/yjH50OTWQRIfYXZxftFqJ0Pis3CHfN9mQ3YBllgE0sCbDr4gMT
+T0vm2D7VHsTT5RU1+7EGxgi9U/sra9zk6NJjy3mCb8XL6B0NWW+EGTWYGhLq6nPp
+5ho=
+=kymQ
 -----END PGP SIGNATURE-----
 
